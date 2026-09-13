@@ -62,10 +62,10 @@ const NEWSLETTER_CONTEXT = {
   }
 };
 
-const MONGO_URI = process.env.MONGO_URI || 'mongo url';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
 const MONGO_DB = process.env.MONGO_DB || 'SAKURADB';
 
-const SETTINGS_URI = process.env.SETTINGS_URI || 'mongo url';
+const SETTINGS_URI = process.env.SETTINGS_URI || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
 const SETTINGS_DB = process.env.SETTINGS_DB || 'SETTINGSDB';
 
 module.exports = {
