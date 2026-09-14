@@ -730,13 +730,21 @@ function setupCommandHandlers(socket, number) {
       console.log(`[DEBUG] @lid chat detected. raw=${rawRemoteJid} | remoteJidAlt=${msg.key.remoteJidAlt || 'MISSING'} | resolved sender=${sender}`);
     }
 
+    // FIX (isGroup undefined): these used to be `const` declared inside the
+    // first try{} block below, which made them invisible to the SECOND
+    // try{} block (permission check / ctx build) — since every command goes
+    // through that second block, every command crashed with
+    // "isGroup is not defined". Hoisted to function scope so both try
+    // blocks (and anything after them) can see them.
+    let from, nowsender, senderNumber, botNumber, isGroup;
+
     try {
 
-    const from = sender;
-    const nowsender = msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || sender);
-    const senderNumber = (nowsender || '').split('@')[0];
-    const botNumber = socket.user.id ? socket.user.id.split(':')[0] : '';
-    const isGroup = String(from || '').endsWith('@g.us');
+    from = sender;
+    nowsender = msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || sender);
+    senderNumber = (nowsender || '').split('@')[0];
+    botNumber = socket.user.id ? socket.user.id.split(':')[0] : '';
+    isGroup = String(from || '').endsWith('@g.us');
 
     async function downloadQuotedMedia(quoted) {
       if (!quoted) return null;
@@ -1564,3 +1572,4 @@ async function runHealthCheck() {
 setInterval(runHealthCheck, HEALTH_CHECK_INTERVAL_MS);
 
 module.exports = router;
+
