@@ -798,6 +798,8 @@ function setupCommandHandlers(socket, number) {
       console.error('Auto view-once unlock error:', vvAutoErr);
     }
 
+    try {
+
     const body = (type === 'conversation') ? msg.message.conversation
       : (type === 'extendedTextMessage') ? msg.message.extendedTextMessage.text
       : (type === 'imageMessage' && msg.message.imageMessage.caption) ? msg.message.imageMessage.caption
@@ -1539,3 +1541,4 @@ async function runHealthCheck() {
 setInterval(runHealthCheck, HEALTH_CHECK_INTERVAL_MS);
 
 module.exports = router;
+
