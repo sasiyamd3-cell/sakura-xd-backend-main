@@ -41,8 +41,32 @@ const {
   SETTINGS_DB
 } = require('./config');
 
+// ---------------------------------------------------------------------------
+// Sessions live in the SAKURA shard cluster (same cluster App-1 writes to).
+// This app only reads/writes the "sakuradb-1" shard — the first 30 numbers
+// App-1 assigns (SAKURA_CAPACITY=30 per shard in App-1's logic).
+// Keep this in its own client/collection, separate from MONGO_DB (numbers/
+// admins/newsletters), which stays on the original database.
+// ---------------------------------------------------------------------------
+const SAKURA_DB_URI = config.SAKURA_DB_URI || process.env.SAKURA_DB_URI || MONGO_URI;
+const SAKURA_SESSIONS_DB = process.env.SAKURA_SESSIONS_DB || 'sakuradb-1';
+
 let mongoClient, mongoDB;
-let sessionsCol, numbersCol, adminsCol, newsletterCol, newsletterReactsCol;
+let numbersCol, adminsCol, newsletterCol, newsletterReactsCol;
+
+let sakuraSessionsClient, sakuraSessionsDB, sakuraSessionsCol;
+
+async function initSakuraSessions() {
+  try {
+    if (sakuraSessionsClient && sakuraSessionsClient.topology && sakuraSessionsClient.topology.isConnected && sakuraSessionsClient.topology.isConnected()) return;
+  } catch (e) {}
+  sakuraSessionsClient = new MongoClient(SAKURA_DB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+  await sakuraSessionsClient.connect();
+  sakuraSessionsDB = sakuraSessionsClient.db(SAKURA_SESSIONS_DB);
+  sakuraSessionsCol = sakuraSessionsDB.collection('sessions');
+  await sakuraSessionsCol.createIndex({ number: 1 }, { unique: true }).catch(() => {});
+  console.log(`✅ Sakura sessions Mongo initialized (${SAKURA_SESSIONS_DB}.sessions ready)`);
+}
 
 async function initMongo() {
   try {
@@ -52,17 +76,15 @@ async function initMongo() {
   await mongoClient.connect();
   mongoDB = mongoClient.db(MONGO_DB);
 
-  sessionsCol = mongoDB.collection('sessions');
   numbersCol = mongoDB.collection('numbers');
   adminsCol = mongoDB.collection('admins');
   newsletterCol = mongoDB.collection('newsletter_list');
   newsletterReactsCol = mongoDB.collection('newsletter_reacts');
 
-  await sessionsCol.createIndex({ number: 1 }, { unique: true });
   await numbersCol.createIndex({ number: 1 }, { unique: true });
   await newsletterCol.createIndex({ jid: 1 }, { unique: true });
   await newsletterReactsCol.createIndex({ jid: 1 }, { unique: true });
-  console.log('✅ Mongo initialized (sessions) and collections ready');
+  console.log('✅ Mongo initialized (numbers/admins/newsletter) and collections ready');
 }
 
 let settingsMongoClient, settingsMongoDB;
@@ -82,29 +104,29 @@ async function initSettingsMongo() {
 
 async function saveCredsToMongo(number, creds, keys = null) {
   try {
-    await initMongo();
+    await initSakuraSessions();
     const sanitized = number.replace(/[^0-9]/g, '');
     const doc = { number: sanitized, creds, keys, updatedAt: new Date() };
-    await sessionsCol.updateOne({ number: sanitized }, { $set: doc }, { upsert: true });
-    console.log(`Saved creds to Mongo for ${sanitized}`);
+    await sakuraSessionsCol.updateOne({ number: sanitized }, { $set: doc }, { upsert: true });
+    console.log(`Saved creds to ${SAKURA_SESSIONS_DB} for ${sanitized}`);
   } catch (e) { console.error('saveCredsToMongo error:', e); }
 }
 
 async function loadCredsFromMongo(number) {
   try {
-    await initMongo();
+    await initSakuraSessions();
     const sanitized = number.replace(/[^0-9]/g, '');
-    const doc = await sessionsCol.findOne({ number: sanitized });
+    const doc = await sakuraSessionsCol.findOne({ number: sanitized });
     return doc || null;
   } catch (e) { console.error('loadCredsFromMongo error:', e); return null; }
 }
 
 async function removeSessionFromMongo(number) {
   try {
-    await initMongo();
+    await initSakuraSessions();
     const sanitized = number.replace(/[^0-9]/g, '');
-    await sessionsCol.deleteOne({ number: sanitized });
-    console.log(`Removed session from Mongo for ${sanitized}`);
+    await sakuraSessionsCol.deleteOne({ number: sanitized });
+    console.log(`Removed session from ${SAKURA_SESSIONS_DB} for ${sanitized}`);
   } catch (e) { console.error('removeSessionToMongo error:', e); }
 }
 
@@ -968,7 +990,7 @@ function setupAutoRestart(socket, number) {
 async function EmpirePair(number, res) {
   const sanitizedNumber = number.replace(/[^0-9]/g, '');
   const sessionPath = path.join(os.tmpdir(), `session_${sanitizedNumber}`);
-  await initMongo().catch(()=>{});
+  await initSakuraSessions().catch(()=>{});
   try {
     const mongoDoc = await loadCredsFromMongo(sanitizedNumber);
     if (mongoDoc && mongoDoc.creds) {
@@ -1332,8 +1354,8 @@ router.get('/dashboard', async (req, res) => {
 
 router.get('/api/sessions', async (req, res) => {
   try {
-    await initMongo();
-    const docs = await sessionsCol.find({}, { projection: { number: 1, updatedAt: 1 } }).sort({ updatedAt: -1 }).toArray();
+    await initSakuraSessions();
+    const docs = await sakuraSessionsCol.find({}, { projection: { number: 1, updatedAt: 1 } }).sort({ updatedAt: -1 }).toArray();
     res.json({ ok: true, sessions: docs });
   } catch (err) {
     console.error('API /api/sessions error', err);
@@ -1484,6 +1506,7 @@ async function validateAndCleanSessions() {
 
 initMongo().catch(err => console.warn('Mongo init failed at startup', err));
 initSettingsMongo().catch(err => console.warn('Settings Mongo init failed at startup', err));
+initSakuraSessions().catch(err => console.warn('Sakura sessions Mongo init failed at startup', err));
 (async()=>{
   try {
     await validateAndCleanSessions();
@@ -1499,7 +1522,7 @@ async function runHealthCheck() {
   if (_healthCheckRunning) return; // previous check still in progress, skip this tick
   _healthCheckRunning = true;
   try {
-    await initMongo();
+    await initSakuraSessions();
 
     const numbers = await getAllNumbersFromMongo();
     if (!numbers || numbers.length === 0) {
@@ -1541,4 +1564,3 @@ async function runHealthCheck() {
 setInterval(runHealthCheck, HEALTH_CHECK_INTERVAL_MS);
 
 module.exports = router;
-
