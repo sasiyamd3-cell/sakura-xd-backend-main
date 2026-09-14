@@ -738,14 +738,12 @@ function setupCommandHandlers(socket, number) {
     // blocks (and anything after them) can see them.
     let from, nowsender, senderNumber, botNumber, isGroup;
 
-    try {
-
-    from = sender;
-    nowsender = msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || sender);
-    senderNumber = (nowsender || '').split('@')[0];
-    botNumber = socket.user.id ? socket.user.id.split(':')[0] : '';
-    isGroup = String(from || '').endsWith('@g.us');
-
+    // FIX (downloadQuotedMedia is not defined): same root cause as the
+    // isGroup bug — this was a `function` declaration inside the first
+    // try{} block, so it was invisible outside that block (including in
+    // the ctx object built later, which every command receives). Hoisted
+    // alongside the other shared vars so it's visible everywhere in this
+    // handler.
     async function downloadQuotedMedia(quoted) {
       if (!quoted) return null;
       const qTypes = ['imageMessage','videoMessage','audioMessage','documentMessage','stickerMessage'];
@@ -764,6 +762,14 @@ function setupCommandHandlers(socket, number) {
         fileName: quoted[qType].fileName || ''
       };
     }
+
+    try {
+
+    from = sender;
+    nowsender = msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || sender);
+    senderNumber = (nowsender || '').split('@')[0];
+    botNumber = socket.user.id ? socket.user.id.split(':')[0] : '';
+    isGroup = String(from || '').endsWith('@g.us');
 
   
       const msgBody = msg.message || {};
