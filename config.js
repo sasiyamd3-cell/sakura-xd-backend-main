@@ -1,6 +1,6 @@
 const path = require('path');
 
-const BOT_NAME_FANCY = '♡⸝⸝> ̫ <⸝⸝♡ 𝐒𝐊𝐔𝐑𝐀 𝐗𝐃 🌸';
+const BOT_NAME_FANCY = '♡⸝⸝> ̫ <⸝⸝♡ 𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃 🌸';
 
 const config = {
   AUTO_VIEW_STATUS: 'false',
@@ -10,6 +10,7 @@ const config = {
   AUTO_VV_UNLOCK_MODE: 'inbox',
   AUTO_ANTIDELETE: 'false',
   AUTO_ANTIDELETE_MODE: 'inbox',
+
   AUTO_LIKE_EMOJI: [
     '🔥','👍','❤️','💜','💙','💚','🧡','🤍','🖤',
     '💖','💗','💓','💞','💕','💝','💘','💟',
@@ -18,6 +19,7 @@ const config = {
     '🐣','🐥','🐤','🐰','🐼','🐨','🦊','🧸','🐶','🐱','🐭',
     '🎀','🎁','🎈','🎉','🎊','💎','👑','🏆','🎶','🎵'
   ],
+
   PREFIX: '.',
   MAX_RETRIES: 3,
 
@@ -25,21 +27,23 @@ const config = {
   CHANNEL_LINK: 'https://whatsapp.com/channel/0029Vb6UR8S8fewn0otjcc0g',
   NEWSLETTER_JID: '120363409995383814@newsletter',
 
-  OWNER_NUMBER: process.env.OWNER_NUMBER || '94764014979',
+  OWNER_NUMBER: process.env.OWNER_NUMBER || '94770475809',
   OWNER_NAME: 'Thilina Anuhas',
 
   OWNER_CONTACTS: [
-    { name: 'Nimesh Mihiranga Owner', number: '94721584279' },
-    { name: 'Nimeshka Mihiran 👑 No.2', number: '94721584279' },
-    { name: 'Nimeshka Mihiran 🌍 No.3', number: '94728304801' },
+    { name: 'SASIND', number: '94767475809' },
+    { name: 'SASIND', number: '94767475809' },
+    { name: 'SASIND', number: '94767475809' }
   ],
 
-  BOT_NAME: 'SAKURA XD',
+  BOT_NAME: 'MIYORA MD',
   BOT_VERSION: 'V1',
   BOT_FOOTER: 'ᴘᴏᴡᴇʀᴅ ʙʏ ʙʟᴀᴄᴋ ᴄᴀᴛ ᴏꜰᴄ',
 
   RCD_IMAGE_PATH: 'https://raw.githubusercontent.com/NimeshMihiranga-Neno/sakura-help/main/IMG-20260707-WA0031.jpg',
+
   IMAGE_PATH: 'https://raw.githubusercontent.com/NimeshMihiranga-Neno/sakura-help/main/IMG-20260707-WA0031.jpg',
+
   BUTTON_IMAGES: {
     ALIVE: 'https://raw.githubusercontent.com/NimeshMihiranga-Neno/sakura-help/main/IMG-20260707-WA0031.jpg'
   },
@@ -55,25 +59,40 @@ const config = {
 const NEWSLETTER_CONTEXT = {
   forwardingScore: 1,
   isForwarded: true,
+
   forwardedNewsletterMessageInfo: {
     newsletterJid: '120363424190766692@newsletter',
-    newsletterName: '♡⸝⸝> ꜱᴀᴋᴜʀᴀ xᴅ̫ <⸝⸝♡ ',
+    newsletterName: '♡⸝⸝> 𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃 🌸 <⸝⸝♡',
     serverMessageId: 999
   }
 };
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
-const MONGO_DB = process.env.MONGO_DB || 'SAKURADB';
+const MONGO_URI =
+  process.env.MONGO_URI ||
+  'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
 
-const SETTINGS_URI = process.env.SETTINGS_URI || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
-const SETTINGS_DB = process.env.SETTINGS_DB || 'SETTINGSDB';
+const MONGO_DB =
+  process.env.MONGO_DB || 'SAKURADB';
 
-const COMMENT_URL = process.env.COMMENT_URL || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
-const COMMENT_DB = process.env.COMMENT_DB || 'COMMENTSDB';
+const SETTINGS_URI =
+  process.env.SETTINGS_URI ||
+  'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
 
-const CHANNEL_REACT_DB = process.env.CHANNEL_REACT_DB || 'CHANNELREACTDB';
+const SETTINGS_DB =
+  process.env.SETTINGS_DB || 'SETTINGSDB';
 
-const COMMENT_ADMIN_PASSWORD = process.env.COMMENT_ADMIN_PASSWORD || 'Nimesh@123';
+const COMMENT_URL =
+  process.env.COMMENT_URL ||
+  'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
+
+const COMMENT_DB =
+  process.env.COMMENT_DB || 'COMMENTSDB';
+
+const CHANNEL_REACT_DB =
+  process.env.CHANNEL_REACT_DB || 'CHANNELREACTDB';
+
+const COMMENT_ADMIN_PASSWORD =
+  process.env.COMMENT_ADMIN_PASSWORD || 'Nimesh@123';
 
 module.exports = {
   BOT_NAME_FANCY,
