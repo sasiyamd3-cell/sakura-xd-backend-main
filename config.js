@@ -2,15 +2,13 @@ const path = require('path');
 
 const BOT_NAME_FANCY = '♡⸝⸝> ̫ <⸝⸝♡ 𝐒𝐊𝐔𝐑𝐀 𝐗𝐃 🌸';
 
-const LOGO_PATH = path.join(__dirname, 'img', 'main.png');
-
 const config = {
-  AUTO_VIEW_STATUS: 'true',
+  AUTO_VIEW_STATUS: 'false',
   AUTO_LIKE_STATUS: 'true',
   AUTO_RECORDING: 'false',
   AUTO_VV_UNLOCK: 'false',
   AUTO_VV_UNLOCK_MODE: 'inbox',
-  AUTO_ANTIDELETE: 'true',
+  AUTO_ANTIDELETE: 'false',
   AUTO_ANTIDELETE_MODE: 'inbox',
   AUTO_LIKE_EMOJI: [
     '🔥','👍','❤️','💜','💙','💚','🧡','🤍','🖤',
@@ -40,16 +38,18 @@ const config = {
   BOT_VERSION: 'V1',
   BOT_FOOTER: 'ᴘᴏᴡᴇʀᴅ ʙʏ ʙʟᴀᴄᴋ ᴄᴀᴛ ᴏꜰᴄ',
 
-  RCD_IMAGE_PATH: LOGO_PATH,
-  IMAGE_PATH: LOGO_PATH,
-  PRIVATE_IMAGE: 'image url',
+  RCD_IMAGE_PATH: 'https://raw.githubusercontent.com/NimeshMihiranga-Neno/sakura-help/main/IMG-20260707-WA0031.jpg',
+  IMAGE_PATH: 'https://raw.githubusercontent.com/NimeshMihiranga-Neno/sakura-help/main/IMG-20260707-WA0031.jpg',
   BUTTON_IMAGES: {
-    ALIVE: LOGO_PATH
+    ALIVE: 'https://raw.githubusercontent.com/NimeshMihiranga-Neno/sakura-help/main/IMG-20260707-WA0031.jpg'
   },
 
   OTP_EXPIRY: 300000,
 
-  MODE: process.env.BOT_MODE || 'public'
+  MODE: process.env.BOT_MODE || 'public',
+
+  SAKURA_DB_URI: process.env.SAKURA_DB_URI || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/',
+  SAKURA_DB_COUNT: process.env.SAKURA_DB_COUNT || 10
 };
 
 const NEWSLETTER_CONTEXT = {
@@ -63,10 +63,17 @@ const NEWSLETTER_CONTEXT = {
 };
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
-const MONGO_DB = process.env.MONGO_DB || 'sakuradb-1';
+const MONGO_DB = process.env.MONGO_DB || 'SAKURADB';
 
 const SETTINGS_URI = process.env.SETTINGS_URI || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
 const SETTINGS_DB = process.env.SETTINGS_DB || 'SETTINGSDB';
+
+const COMMENT_URL = process.env.COMMENT_URL || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
+const COMMENT_DB = process.env.COMMENT_DB || 'COMMENTSDB';
+
+const CHANNEL_REACT_DB = process.env.CHANNEL_REACT_DB || 'CHANNELREACTDB';
+
+const COMMENT_ADMIN_PASSWORD = process.env.COMMENT_ADMIN_PASSWORD || 'Nimesh@123';
 
 module.exports = {
   BOT_NAME_FANCY,
@@ -75,5 +82,9 @@ module.exports = {
   MONGO_URI,
   MONGO_DB,
   SETTINGS_URI,
-  SETTINGS_DB
+  SETTINGS_DB,
+  COMMENT_URL,
+  COMMENT_DB,
+  CHANNEL_REACT_DB,
+  COMMENT_ADMIN_PASSWORD
 };
