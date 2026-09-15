@@ -1,10 +1,10 @@
 // Command: groupmanage
-// Aliases: gmanage, gm
+// Aliases: gmanage, groupmenu, gm
 // MIYORA MD - Group Management System
 
 module.exports = {
   name: 'groupmanage',
-  aliases: ['gmanage', 'gm'],
+  aliases: ['gmanage', 'groupmenu', 'gm'],
 
   async execute(ctx) {
     const {
@@ -12,297 +12,249 @@ module.exports = {
       msg,
       sender,
       from,
-      command,
       args,
       q,
       reply,
       sessionConfig,
       prefix,
       config,
-      BOT_NAME_FANCY,
-      resolveReplyJid
+      BOT_NAME_FANCY
     } = ctx;
 
-    const cfg = sessionConfig || {};
-    const botName = '𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃';
-
-    // =========================================================
-    // CHECK GROUP
-    // =========================================================
+    // ============================================================
+    // BASIC CHECK
+    // ============================================================
 
     if (!from || !from.endsWith('@g.us')) {
       return reply(
-        `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
-        `❌ This command can only be used in a group.`
+        `꒰ᵎ ❌ *GROUP ONLY* ᵎ꒱\n\n` +
+        `මේ command එක Group එකක් ඇතුළේ විතරයි භාවිතා කරන්න පුළුවන්.\n\n` +
+        `🌸 *${BOT_NAME_FANCY}*`
       );
     }
 
-    // =========================================================
-    // GET GROUP METADATA
-    // =========================================================
+    const cfg = sessionConfig || {};
+    const botName = cfg.botName || BOT_NAME_FANCY;
 
-    let metadata;
+    const groupMetadata = await socket.groupMetadata(from);
 
-    try {
-      metadata = await socket.groupMetadata(from);
-    } catch (err) {
-      console.error('MIYORA Group Metadata Error:', err);
+    const participants = groupMetadata.participants || [];
 
-      return reply(
-        `❌ *Failed to get group information!*\n\n` +
-        `Please try again.`
-      );
-    }
+    const senderJid = sender;
 
-    const participants = metadata.participants || [];
+    // ============================================================
+    // JID HELPERS
+    // ============================================================
 
-    // =========================================================
-    // BOT JID
-    // =========================================================
+    const getBaseNumber = (jid = '') =>
+      jid.split('@')[0].replace(/[^0-9]/g, '');
 
-    const botNumber = socket.user?.id
-      ?.split(':')[0]
-      ?.split('@')[0];
+    const normalizeJid = (value = '') => {
+      let number = String(value)
+        .replace(/[@\s+\-().]/g, '')
+        .replace(/^0+/, '');
 
-    const botJid = botNumber
-      ? `${botNumber}@s.whatsapp.net`
-      : null;
+      if (!number) return null;
 
-    // =========================================================
-    // ADMIN CHECK
-    // =========================================================
-
-    const getParticipant = (jid) => {
-      return participants.find(p => p.id === jid);
-    };
-
-    const isAdmin = (jid) => {
-      const user = getParticipant(jid);
-
-      return !!(
-        user &&
-        (
-          user.admin === 'admin' ||
-          user.admin === 'superadmin'
-        )
-      );
-    };
-
-    const senderIsAdmin = isAdmin(sender);
-    const botIsAdmin = botJid ? isAdmin(botJid) : false;
-
-    // =========================================================
-    // HELPERS
-    // =========================================================
-
-    const adminOnly = async () => {
-      if (!senderIsAdmin) {
-        await reply(
-          `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
-          `❌ *Admin Only!*\n\n` +
-          `මෙම command එක භාවිතා කරන්න group admin කෙනෙක් විය යුතුයි.`
-        );
-
-        return false;
+      // Sri Lanka local number support
+      if (number.startsWith('0')) {
+        number = '94' + number.substring(1);
       }
 
-      return true;
-    };
-
-    const botAdminOnly = async () => {
-      if (!botIsAdmin) {
-        await reply(
-          `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
-          `❌ *Bot Is Not Admin!*\n\n` +
-          `MIYORA MD bot එකට group admin permission දෙන්න.`
-        );
-
-        return false;
+      if (!number.startsWith('94') && number.length === 9) {
+        number = '94' + number;
       }
 
-      return true;
+      return `${number}@s.whatsapp.net`;
     };
 
-    const getMentioned = () => {
-      return (
-        msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid ||
-        []
-      );
-    };
+    const getMentionNumber = () => {
+      const mentioned =
+        msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
 
-    const getQuotedParticipant = () => {
-      return msg?.message
-        ?.extendedTextMessage
-        ?.contextInfo
-        ?.participant;
-    };
-
-    const getTarget = () => {
-      const mentioned = getMentioned();
-
-      if (mentioned.length > 0) {
+      if (mentioned.length) {
         return mentioned[0];
       }
 
-      const quoted = getQuotedParticipant();
+      const quotedParticipant =
+        msg?.message?.extendedTextMessage?.contextInfo?.participant;
 
-      if (quoted) {
-        return quoted;
+      if (quotedParticipant) {
+        return quotedParticipant;
       }
 
-      const firstArg =
-        args?.[0] ||
-        (q || '').split(/\s+/)[0];
-
-      if (firstArg) {
-        const number = firstArg.replace(/[^0-9]/g, '');
-
-        if (number.length >= 7) {
-          return `${number}@s.whatsapp.net`;
-        }
+      if (args[0]) {
+        return normalizeJid(args[0]);
       }
 
       return null;
     };
 
-    const footer =
-      `\n\n🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀ𝐜𝐤 𝐂ᴀ𝐭 𝐎ꜰᴄ*\n\n` +
-      `*𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃* 🖤 | *𝐁ʟᴀᴄ𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
+    // ============================================================
+    // ADMIN CHECK
+    // ============================================================
 
-    const sendSuccess = async (text) => {
-      return reply(
-        `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
-        `${text}` +
-        footer
-      );
+    const senderParticipant = participants.find(
+      p => p.id === senderJid
+    );
+
+    const isSenderAdmin =
+      senderParticipant &&
+      (senderParticipant.admin === 'admin' ||
+       senderParticipant.admin === 'superadmin');
+
+    const botJid =
+      socket.user?.id?.split(':')[0] +
+      '@s.whatsapp.net';
+
+    const botParticipant = participants.find(
+      p =>
+        p.id === socket.user?.id ||
+        getBaseNumber(p.id) === getBaseNumber(socket.user?.id)
+    );
+
+    const isBotAdmin =
+      botParticipant &&
+      (botParticipant.admin === 'admin' ||
+       botParticipant.admin === 'superadmin');
+
+    const requireAdmin = async () => {
+      if (!isSenderAdmin) {
+        await reply(
+          `꒰ᵎ 👑 *ADMIN ONLY* ᵎ꒱\n\n` +
+          `මෙය Group Admin කෙනෙකුට විතරයි භාවිතා කරන්න පුළුවන්.\n\n` +
+          `🌸 *${botName}*`
+        );
+        return false;
+      }
+
+      return true;
     };
 
-    // =========================================================
-    // GROUP MANAGE MENU
-    // =========================================================
+    const requireBotAdmin = async () => {
+      if (!isBotAdmin) {
+        await reply(
+          `꒰ᵎ ⚠️ *BOT IS NOT ADMIN* ᵎ꒱\n\n` +
+          `මේ command එක වැඩ කරන්න Bot එකට Group Admin permission එක දෙන්න.\n\n` +
+          `🌸 *${botName}*`
+        );
+        return false;
+      }
 
-    const menuCaption =
-      `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
-      `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
+      return true;
+    };
 
-      `❍ 👤 ᴍᴇᴍʙᴇʀ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ\n` +
-      `❍ *${prefix}add* ┊ Add a member\n` +
-      `❍ *${prefix}kick* ┊ Remove a member\n` +
-      `❍ *${prefix}promote* ┊ Promote to admin\n` +
-      `❍ *${prefix}demote* ┊ Remove admin\n\n` +
+    // ============================================================
+    // COMMAND
+    // ============================================================
 
-      `❍ 📢 ᴍᴇɴᴛɪᴏɴ ᴛᴏᴏʟꜱ\n` +
-      `❍ *${prefix}tagall* ┊ Tag all members\n` +
-      `❍ *${prefix}hidetag* ┊ Hidden tag all\n\n` +
+    const command =
+      String(ctx.command || '')
+        .toLowerCase()
+        .replace(prefix, '');
 
-      `❍ ⚙️ ɢʀᴏᴜᴘ ꜱᴇᴛᴛɪɴɢꜱ\n` +
-      `❍ *${prefix}setname* ┊ Change group name\n` +
-      `❍ *${prefix}setdesc* ┊ Change group description\n` +
-      `❍ *${prefix}open* ┊ Open group\n` +
-      `❍ *${prefix}close* ┊ Close group\n\n` +
-
-      `❍ 🔗 ɢʀᴏᴜᴘ ʟɪɴᴋ\n` +
-      `❍ *${prefix}link* ┊ Get group invite link\n` +
-      `❍ *${prefix}revoke* ┊ Reset group invite link\n\n` +
-
-      `❍ 📋 ɢʀᴏᴜᴘ ɪɴꜰᴏ\n` +
-      `❍ *${prefix}groupinfo* ┊ View group information\n\n` +
-
-      `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄ𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
-      `*𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃* 🖤 | *𝐁ʟᴀᴄ𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
-
-    // =========================================================
-    // MAIN MENU
-    // =========================================================
+    // ============================================================
+    // GROUP MENU
+    // ============================================================
 
     if (
       command === 'groupmanage' ||
       command === 'gmanage' ||
+      command === 'groupmenu' ||
       command === 'gm'
     ) {
-      await socket.sendMessage(sender, {
-        react: {
-          text: '👥',
-          key: msg.key
-        }
-      });
+      const menu =
+        `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
+        `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
 
-      return reply(menuCaption);
+        `❍ 👤 *ᴍᴇᴍʙᴇʀ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ*\n` +
+        `❍ *${prefix}add* ┊ Add a member\n` +
+        `❍ *${prefix}kick* ┊ Remove a member\n` +
+        `❍ *${prefix}promote* ┊ Promote to admin\n` +
+        `❍ *${prefix}demote* ┊ Remove admin\n\n` +
+
+        `❍ 📢 *ᴍᴇɴᴛɪᴏɴ ᴛᴏᴏʟꜱ*\n` +
+        `❍ *${prefix}tagall* ┊ Tag all members\n` +
+        `❍ *${prefix}hidetag* ┊ Hidden tag all\n\n` +
+
+        `❍ ⚙️ *ɢʀᴏᴜᴘ ꜱᴇᴛᴛɪɴɢꜱ*\n` +
+        `❍ *${prefix}setname* ┊ Change group name\n` +
+        `❍ *${prefix}setdesc* ┊ Change description\n` +
+        `❍ *${prefix}open* ┊ Open group\n` +
+        `❍ *${prefix}close* ┊ Close group\n\n` +
+
+        `❍ 🔗 *ɢʀᴏᴜᴘ ʟɪɴᴋ*\n` +
+        `❍ *${prefix}link* ┊ Get invite link\n` +
+        `❍ *${prefix}revoke* ┊ Reset invite link\n\n` +
+
+        `❍ 📋 *ɢʀᴏᴜᴘ ɪɴꜰᴏ*\n` +
+        `❍ *${prefix}groupinfo* ┊ Group information\n\n` +
+
+        `🧚‍♀️ ©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ\n\n` +
+        `𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃 🖤 | 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ`;
+
+      return reply(menu);
     }
 
-    // =========================================================
+    // ============================================================
     // ADD
-    // =========================================================
+    // ============================================================
 
     if (command === 'add') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
 
-      const input = (q || args?.join(' ') || '').trim();
-
-      if (!input) {
-        return reply(
-          `꒰ᵎ 👤 *Add Member* ᵎ꒱\n\n` +
-          `❌ Please provide a phone number!\n\n` +
-          `📌 *Usage:* ${prefix}add 947XXXXXXXX\n\n` +
-          `˚₊‧꒰ა 🌸 ໒꒱‧₊˚\n` +
-          `*${botName}* 🖤`
-        );
-      }
-
-      const numbers = input
-        .split(/[\s,]+/)
-        .map(n => n.replace(/[^0-9]/g, ''))
-        .filter(n => n.length >= 7);
-
-      if (!numbers.length) {
-        return reply(`❌ Invalid phone number!`);
-      }
-
-      try {
-        await socket.groupParticipantsUpdate(
-          from,
-          numbers.map(n => `${n}@s.whatsapp.net`),
-          'add'
-        );
-
-        return sendSuccess(
-          `✅ *Member Add Request Sent!*\n\n` +
-          `👤 *Number(s):* ${numbers.join(', ')}`
-        );
-      } catch (err) {
-        console.error('MIYORA ADD ERROR:', err);
-
-        return reply(
-          `❌ *Add Failed!*\n\n${err.message}`
-        );
-      }
-    }
-
-    // =========================================================
-    // KICK
-    // =========================================================
-
-    if (command === 'kick') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
-
-      const target = getTarget();
+      const target = getMentionNumber();
 
       if (!target) {
         return reply(
-          `꒰ᵎ 👢 *Kick Member* ᵎ꒱\n\n` +
-          `❌ Tag a member or reply to their message.\n\n` +
-          `📌 *Usage:* ${prefix}kick @user`
+          `꒰ᵎ ➕ *ADD MEMBER* ᵎ꒱\n\n` +
+          `Number එකක් හෝ contact mention එකක් දෙන්න.\n\n` +
+          `📌 Example:\n` +
+          `*${prefix}add 947XXXXXXXX*\n\n` +
+          `🌸 *${botName}*`
         );
       }
 
-      if (target === botJid) {
-        return reply(`❌ I cannot remove myself.`);
-      }
+      try {
+        const result = await socket.groupParticipantsUpdate(
+          from,
+          [target],
+          'add'
+        );
 
-      if (isAdmin(target)) {
-        return reply(`❌ You cannot remove another admin.`);
+        return reply(
+          `꒰ᵎ ✅ *MEMBER ADDED* ᵎ꒱\n\n` +
+          `👤 @${getBaseNumber(target)}\n\n` +
+          `🌸 *${botName}*`
+        );
+      } catch (err) {
+        console.error('ADD ERROR:', err);
+
+        return reply(
+          `꒰ᵎ ❌ *ADD FAILED* ᵎ꒱\n\n` +
+          `Member add කරන්න බැරි වුණා.\n\n` +
+          `> ${err.message || 'Unknown error'}`
+        );
+      }
+    }
+
+    // ============================================================
+    // KICK
+    // ============================================================
+
+    if (command === 'kick' || command === 'remove') {
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
+
+      const target = getMentionNumber();
+
+      if (!target) {
+        return reply(
+          `꒰ᵎ ❌ *KICK MEMBER* ᵎ꒱\n\n` +
+          `Remove කරන්න ඕන member ව mention කරන්න හෝ number එක දෙන්න.\n\n` +
+          `📌 *${prefix}kick 947XXXXXXXX*`
+        );
       }
 
       try {
@@ -312,39 +264,37 @@ module.exports = {
           'remove'
         );
 
-        return sendSuccess(
-          `✅ *Member Removed Successfully!*\n\n` +
-          `👤 @${target.split('@')[0]}`
+        return reply(
+          `꒰ᵎ 🗑️ *MEMBER REMOVED* ᵎ꒱\n\n` +
+          `👤 @${getBaseNumber(target)}\n\n` +
+          `🌸 *${botName}*`
         );
       } catch (err) {
-        console.error('MIYORA KICK ERROR:', err);
+        console.error('KICK ERROR:', err);
 
         return reply(
-          `❌ *Kick Failed!*\n\n${err.message}`
+          `꒰ᵎ ❌ *KICK FAILED* ᵎ꒱\n\n` +
+          `${err.message || 'Unknown error'}`
         );
       }
     }
 
-    // =========================================================
+    // ============================================================
     // PROMOTE
-    // =========================================================
+    // ============================================================
 
     if (command === 'promote') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
 
-      const target = getTarget();
+      const target = getMentionNumber();
 
       if (!target) {
         return reply(
-          `꒰ᵎ 👑 *Promote Member* ᵎ꒱\n\n` +
-          `❌ Tag or reply to a member.\n\n` +
-          `📌 *Usage:* ${prefix}promote @user`
+          `꒰ᵎ 👑 *PROMOTE ADMIN* ᵎ꒱\n\n` +
+          `Promote කරන්න ඕන member ව mention කරන්න.\n\n` +
+          `📌 *${prefix}promote @member*`
         );
-      }
-
-      if (isAdmin(target)) {
-        return reply(`ℹ️ This member is already an admin.`);
       }
 
       try {
@@ -354,43 +304,38 @@ module.exports = {
           'promote'
         );
 
-        return sendSuccess(
-          `👑 *Promoted Successfully!*\n\n` +
-          `👤 @${target.split('@')[0]} is now an admin.`
+        return reply(
+          `꒰ᵎ 👑 *ADMIN PROMOTED* ᵎ꒱\n\n` +
+          `👤 @${getBaseNumber(target)}\n` +
+          `✨ දැන් Group Admin කෙනෙක්.\n\n` +
+          `🌸 *${botName}*`
         );
       } catch (err) {
-        console.error('MIYORA PROMOTE ERROR:', err);
+        console.error('PROMOTE ERROR:', err);
 
         return reply(
-          `❌ *Promote Failed!*\n\n${err.message}`
+          `꒰ᵎ ❌ *PROMOTE FAILED* ᵎ꒱\n\n` +
+          `${err.message || 'Unknown error'}`
         );
       }
     }
 
-    // =========================================================
+    // ============================================================
     // DEMOTE
-    // =========================================================
+    // ============================================================
 
     if (command === 'demote') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
 
-      const target = getTarget();
+      const target = getMentionNumber();
 
       if (!target) {
         return reply(
-          `꒰ᵎ 👤 *Demote Member* ᵎ꒱\n\n` +
-          `❌ Tag or reply to an admin.\n\n` +
-          `📌 *Usage:* ${prefix}demote @user`
+          `꒰ᵎ 👤 *DEMOTE ADMIN* ᵎ꒱\n\n` +
+          `Demote කරන්න ඕන Admin ව mention කරන්න.\n\n` +
+          `📌 *${prefix}demote @admin*`
         );
-      }
-
-      if (!isAdmin(target)) {
-        return reply(`ℹ️ This member is not an admin.`);
-      }
-
-      if (target === botJid) {
-        return reply(`❌ I cannot demote myself.`);
       }
 
       try {
@@ -400,156 +345,153 @@ module.exports = {
           'demote'
         );
 
-        return sendSuccess(
-          `✅ *Admin Removed Successfully!*\n\n` +
-          `👤 @${target.split('@')[0]}`
+        return reply(
+          `꒰ᵎ ✅ *ADMIN DEMOTED* ᵎ꒱\n\n` +
+          `👤 @${getBaseNumber(target)}\n\n` +
+          `🌸 *${botName}*`
         );
       } catch (err) {
-        console.error('MIYORA DEMOTE ERROR:', err);
+        console.error('DEMOTE ERROR:', err);
 
         return reply(
-          `❌ *Demote Failed!*\n\n${err.message}`
+          `꒰ᵎ ❌ *DEMOTE FAILED* ᵎ꒱\n\n` +
+          `${err.message || 'Unknown error'}`
         );
       }
     }
 
-    // =========================================================
+    // ============================================================
     // TAG ALL
-    // =========================================================
+    // ============================================================
 
     if (command === 'tagall') {
-      if (!(await adminOnly())) return;
+      if (!(await requireAdmin())) return;
 
-      const members = participants
+      const mentions = participants
         .map(p => p.id)
         .filter(Boolean);
 
       const message =
-        (q || args?.join(' ') || '').trim() ||
-        'Attention everyone!';
-
-      let text =
-        `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *👥 ᴛᴀɢᴀʟʟ* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
-        `${message}\n\n`;
-
-      for (const member of members) {
-        text += `@${member.split('@')[0]} `;
-      }
-
-      return socket.sendMessage(
-        from,
-        {
-          text,
-          mentions: members
-        },
-        { quoted: msg }
-      );
-    }
-
-    // =========================================================
-    // HIDETAG
-    // =========================================================
-
-    if (command === 'hidetag') {
-      if (!(await adminOnly())) return;
-
-      const members = participants
-        .map(p => p.id)
-        .filter(Boolean);
-
-      const message =
-        (q || args?.join(' ') || '').trim() ||
-        `📢 *${metadata.subject || 'Group'}*`;
+        `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *ᴛᴀɢ ᴀʟʟ* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
+        `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
+        `${q || '👋 Hello everyone!'}\n\n` +
+        `> 👥 *Group Members:* ${mentions.length}\n\n` +
+        `🧚‍♀️ *${botName}*`;
 
       return socket.sendMessage(
         from,
         {
           text: message,
-          mentions: members
+          mentions
         },
         { quoted: msg }
       );
     }
 
-    // =========================================================
+    // ============================================================
+    // HIDETAG
+    // ============================================================
+
+    if (command === 'hidetag') {
+      if (!(await requireAdmin())) return;
+
+      const mentions = participants
+        .map(p => p.id)
+        .filter(Boolean);
+
+      return socket.sendMessage(
+        from,
+        {
+          text: q || '🌸 Attention everyone!',
+          mentions
+        },
+        { quoted: msg }
+      );
+    }
+
+    // ============================================================
     // SET NAME
-    // =========================================================
+    // ============================================================
 
     if (command === 'setname') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
 
-      const newName =
-        (q || args?.join(' ') || '').trim();
+      const newName = args.join(' ').trim();
 
       if (!newName) {
         return reply(
-          `❌ *Usage:*\n\n${prefix}setname New Group Name`
+          `꒰ᵎ ✏️ *SET GROUP NAME* ᵎ꒱\n\n` +
+          `📌 Example:\n` +
+          `*${prefix}setname MIYORA FAMILY*`
         );
       }
 
       try {
-        await socket.groupUpdateSubject(
-          from,
-          newName
-        );
-
-        return sendSuccess(
-          `🏷️ *Group Name Updated!*\n\n` +
-          `✨ ${newName}`
-        );
-      } catch (err) {
-        console.error('MIYORA SETNAME ERROR:', err);
+        await socket.groupUpdateSubject(from, newName);
 
         return reply(
-          `❌ *Failed!*\n\n${err.message}`
+          `꒰ᵎ ✅ *GROUP NAME UPDATED* ᵎ꒱\n\n` +
+          `✨ ${newName}\n\n` +
+          `🌸 *${botName}*`
+        );
+      } catch (err) {
+        console.error('SETNAME ERROR:', err);
+
+        return reply(
+          `❌ Group name change කරන්න බැරි වුණා.\n\n` +
+          `${err.message || 'Unknown error'}`
         );
       }
     }
 
-    // =========================================================
+    // ============================================================
     // SET DESCRIPTION
-    // =========================================================
+    // ============================================================
 
-    if (command === 'setdesc') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
+    if (command === 'setdesc' || command === 'setdescription') {
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
 
-      const description =
-        (q || args?.join(' ') || '').trim();
+      const newDesc = args.join(' ').trim();
 
-      if (!description) {
+      if (!newDesc) {
         return reply(
-          `❌ *Usage:*\n\n${prefix}setdesc New Description`
+          `꒰ᵎ 📝 *SET GROUP DESCRIPTION* ᵎ꒱\n\n` +
+          `📌 Example:\n` +
+          `*${prefix}setdesc Welcome to MIYORA FAMILY*`
         );
       }
 
       try {
         await socket.groupUpdateDescription(
           from,
-          description
+          newDesc
         );
-
-        return sendSuccess(
-          `📝 *Group Description Updated!*\n\n` +
-          `${description}`
-        );
-      } catch (err) {
-        console.error('MIYORA SETDESC ERROR:', err);
 
         return reply(
-          `❌ *Failed!*\n\n${err.message}`
+          `꒰ᵎ ✅ *DESCRIPTION UPDATED* ᵎ꒱\n\n` +
+          `${newDesc}\n\n` +
+          `🌸 *${botName}*`
+        );
+      } catch (err) {
+        console.error('SETDESC ERROR:', err);
+
+        return reply(
+          `❌ Group description change කරන්න බැරි වුණා.\n\n` +
+          `${err.message || 'Unknown error'}`
         );
       }
     }
 
-    // =========================================================
+    // ============================================================
     // OPEN GROUP
-    // =========================================================
+    // Everyone can send messages
+    // ============================================================
 
     if (command === 'open') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
 
       try {
         await socket.groupSettingUpdate(
@@ -557,26 +499,29 @@ module.exports = {
           'not_announcement'
         );
 
-        return sendSuccess(
-          `🔓 *Group Opened!*\n\n` +
-          `Everyone can send messages now.`
+        return reply(
+          `꒰ᵎ 🔓 *GROUP OPENED* ᵎ꒱\n\n` +
+          `👥 දැන් සියලුම members ලට message කරන්න පුළුවන්.\n\n` +
+          `🌸 *${botName}*`
         );
       } catch (err) {
-        console.error('MIYORA OPEN ERROR:', err);
+        console.error('OPEN ERROR:', err);
 
         return reply(
-          `❌ *Open Failed!*\n\n${err.message}`
+          `❌ Group open කරන්න බැරි වුණා.\n\n` +
+          `${err.message || 'Unknown error'}`
         );
       }
     }
 
-    // =========================================================
+    // ============================================================
     // CLOSE GROUP
-    // =========================================================
+    // Only admins can send messages
+    // ============================================================
 
     if (command === 'close') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
 
       try {
         await socket.groupSettingUpdate(
@@ -584,75 +529,100 @@ module.exports = {
           'announcement'
         );
 
-        return sendSuccess(
-          `🔒 *Group Closed!*\n\n` +
-          `Only admins can send messages now.`
+        return reply(
+          `꒰ᵎ 🔒 *GROUP CLOSED* ᵎ꒱\n\n` +
+          `👑 දැන් Admin ලට විතරක් message කරන්න පුළුවන්.\n\n` +
+          `🌸 *${botName}*`
         );
       } catch (err) {
-        console.error('MIYORA CLOSE ERROR:', err);
+        console.error('CLOSE ERROR:', err);
 
         return reply(
-          `❌ *Close Failed!*\n\n${err.message}`
+          `❌ Group close කරන්න බැරි වුණා.\n\n` +
+          `${err.message || 'Unknown error'}`
         );
       }
     }
 
-    // =========================================================
+    // ============================================================
     // GROUP LINK
-    // =========================================================
+    // ============================================================
 
-    if (command === 'link') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
+    if (command === 'link' || command === 'grouplink') {
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
 
       try {
-        const code =
-          await socket.groupInviteCode(from);
+        const code = await socket.groupInviteCode(from);
 
-        return reply(
-          `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *🔗 ɢʀᴏᴜᴘ ʟɪɴᴋ* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
-          `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
-          `🔗 *https://chat.whatsapp.com/${code}*\n\n` +
-          `🌸 *${botName}* 🖤`
+        const link =
+          `https://chat.whatsapp.com/${code}`;
+
+        return socket.sendMessage(
+          from,
+          {
+            text:
+              `꒰ᵎ 🔗 *GROUP INVITE LINK* ᵎ꒱\n\n` +
+              `👥 *${groupMetadata.subject}*\n\n` +
+              `🔗 ${link}\n\n` +
+              `🌸 *${botName}*`
+          },
+          { quoted: msg }
         );
       } catch (err) {
-        console.error('MIYORA LINK ERROR:', err);
+        console.error('LINK ERROR:', err);
 
         return reply(
-          `❌ *Failed to get group link!*\n\n${err.message}`
+          `❌ Group link ලබාගන්න බැරි වුණා.\n\n` +
+          `${err.message || 'Unknown error'}`
         );
       }
     }
 
-    // =========================================================
+    // ============================================================
     // REVOKE LINK
-    // =========================================================
+    // ============================================================
 
     if (command === 'revoke') {
-      if (!(await adminOnly())) return;
-      if (!(await botAdminOnly())) return;
+      if (!(await requireAdmin())) return;
+      if (!(await requireBotAdmin())) return;
 
       try {
-        await socket.groupRevokeInvite(from);
+        const newCode =
+          await socket.groupRevokeInvite(from);
 
-        return sendSuccess(
-          `🔄 *Group Link Reset Successfully!*\n\n` +
-          `The previous invite link is no longer valid.`
+        const newLink =
+          `https://chat.whatsapp.com/${newCode}`;
+
+        return socket.sendMessage(
+          from,
+          {
+            text:
+              `꒰ᵎ ♻️ *GROUP LINK RESET* ᵎ꒱\n\n` +
+              `⚠️ පරණ invite link එක invalidate කරලා තියෙනවා.\n\n` +
+              `🔗 *New Link:*\n${newLink}\n\n` +
+              `🌸 *${botName}*`
+          },
+          { quoted: msg }
         );
       } catch (err) {
-        console.error('MIYORA REVOKE ERROR:', err);
+        console.error('REVOKE ERROR:', err);
 
         return reply(
-          `❌ *Revoke Failed!*\n\n${err.message}`
+          `❌ Group link reset කරන්න බැරි වුණා.\n\n` +
+          `${err.message || 'Unknown error'}`
         );
       }
     }
 
-    // =========================================================
+    // ============================================================
     // GROUP INFO
-    // =========================================================
+    // ============================================================
 
-    if (command === 'groupinfo') {
+    if (
+      command === 'groupinfo' ||
+      command === 'ginfo'
+    ) {
       const admins = participants.filter(
         p =>
           p.admin === 'admin' ||
@@ -660,32 +630,65 @@ module.exports = {
       );
 
       const owner =
-        metadata.owner ||
-        metadata.subjectOwner ||
+        groupMetadata.owner ||
+        groupMetadata.subjectOwner ||
         'Unknown';
+
+      const creation =
+        groupMetadata.creation
+          ? new Date(
+              groupMetadata.creation * 1000
+            ).toLocaleString('en-GB', {
+              timeZone: 'Asia/Colombo'
+            })
+          : 'Unknown';
 
       const info =
         `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *📋 ɢʀᴏᴜᴘ ɪɴꜰᴏ* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
         `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
-        `❍ 🏷️ *Name* ┊ ${metadata.subject || 'Unknown'}\n` +
+
+        `❍ 🏷️ *Name* ┊ ${groupMetadata.subject}\n` +
         `❍ 👥 *Members* ┊ ${participants.length}\n` +
         `❍ 👑 *Admins* ┊ ${admins.length}\n` +
         `❍ 🆔 *Group ID* ┊ ${from}\n` +
-        `❍ 👤 *Owner* ┊ ${owner}\n\n` +
-        `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
-        `*𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃* 🖤 | *𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
+        `❍ 📅 *Created* ┊ ${creation}\n` +
+        `❍ 👤 *Owner* ┊ ${getBaseNumber(owner)}\n\n` +
+
+        `🧚‍♀️ ©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ\n\n` +
+        `𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃 🖤 | 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ`;
 
       return reply(info);
     }
 
-    // =========================================================
-    // UNKNOWN
-    // =========================================================
+    // ============================================================
+    // UNKNOWN GROUP COMMAND
+    // ============================================================
 
-    return reply(
-      `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
-      `❌ Unknown Group Management Command.\n\n` +
-      `Use *${prefix}groupmanage* to view the menu.`
-    );
+    const groupCommands = [
+      'add',
+      'kick',
+      'remove',
+      'promote',
+      'demote',
+      'tagall',
+      'hidetag',
+      'setname',
+      'setdesc',
+      'setdescription',
+      'open',
+      'close',
+      'link',
+      'grouplink',
+      'revoke',
+      'groupinfo',
+      'ginfo'
+    ];
+
+    if (groupCommands.includes(command)) {
+      return reply(
+        `❌ Command එක process කරන්න බැරි වුණා.\n\n` +
+        `*${prefix}groupmanage* දාලා Group Manage Menu එක බලන්න.`
+      );
+    }
   }
 };
