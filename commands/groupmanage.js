@@ -1,6 +1,6 @@
 // Command: groupmanage
 // Aliases: gmanage, groupmenu, gm
-// MIYORA MD - Group Management System
+// MIYORA MD - Group Management System (Fixed & Optimized)
 
 module.exports = {
   name: 'groupmanage',
@@ -29,25 +29,30 @@ module.exports = {
       return reply(
         `꒰ᵎ ❌ *GROUP ONLY* ᵎ꒱\n\n` +
         `මේ command එක Group එකක් ඇතුළේ විතරයි භාවිතා කරන්න පුළුවන්.\n\n` +
-        `🌸 *${BOT_NAME_FANCY}*`
+        `🌸 *${BOT_NAME_FANCY || 'MIYORA MD'}*`
       );
     }
 
     const cfg = sessionConfig || {};
-    const botName = cfg.botName || BOT_NAME_FANCY;
+    const botName = cfg.botName || BOT_NAME_FANCY || 'MIYORA MD';
 
-    const groupMetadata = await socket.groupMetadata(from);
+    let groupMetadata;
+    try {
+      groupMetadata = await socket.groupMetadata(from);
+    } catch (err) {
+      console.error('GROUP METADATA ERROR:', err);
+      return reply(`❌ Group details ලබාගැනීමේ දෝෂයක් සිදු විය.`);
+    }
 
     const participants = groupMetadata.participants || [];
-
-    const senderJid = sender;
+    const senderJid = sender || msg?.key?.participant || msg?.participant;
 
     // ============================================================
     // JID HELPERS
     // ============================================================
 
     const getBaseNumber = (jid = '') =>
-      jid.split('@')[0].replace(/[^0-9]/g, '');
+      jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
 
     const normalizeJid = (value = '') => {
       let number = String(value)
@@ -56,7 +61,6 @@ module.exports = {
 
       if (!number) return null;
 
-      // Sri Lanka local number support
       if (number.startsWith('0')) {
         number = '94' + number.substring(1);
       }
@@ -69,21 +73,19 @@ module.exports = {
     };
 
     const getMentionNumber = () => {
-      const mentioned =
-        msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
-
+      const contextInfo = msg?.message?.extendedTextMessage?.contextInfo || msg?.message?.imageMessage?.contextInfo || msg?.message?.videoMessage?.contextInfo;
+      
+      const mentioned = contextInfo?.mentionedJid || [];
       if (mentioned.length) {
         return mentioned[0];
       }
 
-      const quotedParticipant =
-        msg?.message?.extendedTextMessage?.contextInfo?.participant;
-
+      const quotedParticipant = contextInfo?.participant;
       if (quotedParticipant) {
         return quotedParticipant;
       }
 
-      if (args[0]) {
+      if (args && args[0]) {
         return normalizeJid(args[0]);
       }
 
@@ -95,7 +97,7 @@ module.exports = {
     // ============================================================
 
     const senderParticipant = participants.find(
-      p => p.id === senderJid
+      p => getBaseNumber(p.id) === getBaseNumber(senderJid)
     );
 
     const isSenderAdmin =
@@ -103,14 +105,10 @@ module.exports = {
       (senderParticipant.admin === 'admin' ||
        senderParticipant.admin === 'superadmin');
 
-    const botJid =
-      socket.user?.id?.split(':')[0] +
-      '@s.whatsapp.net';
-
+    const botNumber = socket.user?.id ? getBaseNumber(socket.user.id) : '';
+    
     const botParticipant = participants.find(
-      p =>
-        p.id === socket.user?.id ||
-        getBaseNumber(p.id) === getBaseNumber(socket.user?.id)
+      p => getBaseNumber(p.id) === botNumber
     );
 
     const isBotAdmin =
@@ -127,7 +125,6 @@ module.exports = {
         );
         return false;
       }
-
       return true;
     };
 
@@ -140,18 +137,15 @@ module.exports = {
         );
         return false;
       }
-
       return true;
     };
 
     // ============================================================
-    // COMMAND
+    // COMMAND PARSING
     // ============================================================
 
-    const command =
-      String(ctx.command || '')
-        .toLowerCase()
-        .replace(prefix, '');
+    const rawCommand = ctx.command || (args && args.shift()) || '';
+    const command = String(rawCommand).toLowerCase().replace(prefix, '').trim();
 
     // ============================================================
     // GROUP MENU
@@ -217,30 +211,26 @@ module.exports = {
       }
 
       try {
-        const result = await socket.groupParticipantsUpdate(
-          from,
-          [target],
-          'add'
-        );
+        await socket.groupParticipantsUpdate(from, [target], 'add');
 
         return reply(
           `꒰ᵎ ✅ *MEMBER ADDED* ᵎ꒱\n\n` +
           `👤 @${getBaseNumber(target)}\n\n` +
-          `🌸 *${botName}*`
+          `🌸 *${botName}*`,
+          { mentions: [target] }
         );
       } catch (err) {
         console.error('ADD ERROR:', err);
-
         return reply(
           `꒰ᵎ ❌ *ADD FAILED* ᵎ꒱\n\n` +
-          `Member add කරන්න බැරි වුණා.\n\n` +
+          `Member add කරන්න බැරි වුණා. සමහර විට privacy settings නිසා විය හැක.\n\n` +
           `> ${err.message || 'Unknown error'}`
         );
       }
     }
 
     // ============================================================
-    // KICK
+    // KICK / REMOVE
     // ============================================================
 
     if (command === 'kick' || command === 'remove') {
@@ -258,20 +248,16 @@ module.exports = {
       }
 
       try {
-        await socket.groupParticipantsUpdate(
-          from,
-          [target],
-          'remove'
-        );
+        await socket.groupParticipantsUpdate(from, [target], 'remove');
 
         return reply(
           `꒰ᵎ 🗑️ *MEMBER REMOVED* ᵎ꒱\n\n` +
           `👤 @${getBaseNumber(target)}\n\n` +
-          `🌸 *${botName}*`
+          `🌸 *${botName}*`,
+          { mentions: [target] }
         );
       } catch (err) {
         console.error('KICK ERROR:', err);
-
         return reply(
           `꒰ᵎ ❌ *KICK FAILED* ᵎ꒱\n\n` +
           `${err.message || 'Unknown error'}`
@@ -298,21 +284,17 @@ module.exports = {
       }
 
       try {
-        await socket.groupParticipantsUpdate(
-          from,
-          [target],
-          'promote'
-        );
+        await socket.groupParticipantsUpdate(from, [target], 'promote');
 
         return reply(
           `꒰ᵎ 👑 *ADMIN PROMOTED* ᵎ꒱\n\n` +
           `👤 @${getBaseNumber(target)}\n` +
           `✨ දැන් Group Admin කෙනෙක්.\n\n` +
-          `🌸 *${botName}*`
+          `🌸 *${botName}*`,
+          { mentions: [target] }
         );
       } catch (err) {
         console.error('PROMOTE ERROR:', err);
-
         return reply(
           `꒰ᵎ ❌ *PROMOTE FAILED* ᵎ꒱\n\n` +
           `${err.message || 'Unknown error'}`
@@ -339,20 +321,16 @@ module.exports = {
       }
 
       try {
-        await socket.groupParticipantsUpdate(
-          from,
-          [target],
-          'demote'
-        );
+        await socket.groupParticipantsUpdate(from, [target], 'demote');
 
         return reply(
           `꒰ᵎ ✅ *ADMIN DEMOTED* ᵎ꒱\n\n` +
           `👤 @${getBaseNumber(target)}\n\n` +
-          `🌸 *${botName}*`
+          `🌸 *${botName}*`,
+          { mentions: [target] }
         );
       } catch (err) {
         console.error('DEMOTE ERROR:', err);
-
         return reply(
           `꒰ᵎ ❌ *DEMOTE FAILED* ᵎ꒱\n\n` +
           `${err.message || 'Unknown error'}`
@@ -367,23 +345,17 @@ module.exports = {
     if (command === 'tagall') {
       if (!(await requireAdmin())) return;
 
-      const mentions = participants
-        .map(p => p.id)
-        .filter(Boolean);
-
+      const mentions = participants.map(p => p.id).filter(Boolean);
       const message =
         `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *ᴛᴀɢ ᴀʟʟ* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
         `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
-        `${q || '👋 Hello everyone!'}\n\n` +
+        `${q || (args ? args.join(' ') : '') || '👋 Hello everyone!'}\n\n` +
         `> 👥 *Group Members:* ${mentions.length}\n\n` +
         `🧚‍♀️ *${botName}*`;
 
       return socket.sendMessage(
         from,
-        {
-          text: message,
-          mentions
-        },
+        { text: message, mentions },
         { quoted: msg }
       );
     }
@@ -395,16 +367,12 @@ module.exports = {
     if (command === 'hidetag') {
       if (!(await requireAdmin())) return;
 
-      const mentions = participants
-        .map(p => p.id)
-        .filter(Boolean);
+      const mentions = participants.map(p => p.id).filter(Boolean);
+      const textMessage = q || (args ? args.join(' ') : '') || '🌸 Attention everyone!';
 
       return socket.sendMessage(
         from,
-        {
-          text: q || '🌸 Attention everyone!',
-          mentions
-        },
+        { text: textMessage, mentions },
         { quoted: msg }
       );
     }
@@ -417,7 +385,7 @@ module.exports = {
       if (!(await requireAdmin())) return;
       if (!(await requireBotAdmin())) return;
 
-      const newName = args.join(' ').trim();
+      const newName = (q || (args ? args.join(' ') : '')).trim();
 
       if (!newName) {
         return reply(
@@ -437,7 +405,6 @@ module.exports = {
         );
       } catch (err) {
         console.error('SETNAME ERROR:', err);
-
         return reply(
           `❌ Group name change කරන්න බැරි වුණා.\n\n` +
           `${err.message || 'Unknown error'}`
@@ -453,7 +420,7 @@ module.exports = {
       if (!(await requireAdmin())) return;
       if (!(await requireBotAdmin())) return;
 
-      const newDesc = args.join(' ').trim();
+      const newDesc = (q || (args ? args.join(' ') : '')).trim();
 
       if (!newDesc) {
         return reply(
@@ -464,10 +431,7 @@ module.exports = {
       }
 
       try {
-        await socket.groupUpdateDescription(
-          from,
-          newDesc
-        );
+        await socket.groupUpdateDescription(from, newDesc);
 
         return reply(
           `꒰ᵎ ✅ *DESCRIPTION UPDATED* ᵎ꒱\n\n` +
@@ -476,7 +440,6 @@ module.exports = {
         );
       } catch (err) {
         console.error('SETDESC ERROR:', err);
-
         return reply(
           `❌ Group description change කරන්න බැරි වුණා.\n\n` +
           `${err.message || 'Unknown error'}`
@@ -486,7 +449,6 @@ module.exports = {
 
     // ============================================================
     // OPEN GROUP
-    // Everyone can send messages
     // ============================================================
 
     if (command === 'open') {
@@ -494,10 +456,7 @@ module.exports = {
       if (!(await requireBotAdmin())) return;
 
       try {
-        await socket.groupSettingUpdate(
-          from,
-          'not_announcement'
-        );
+        await socket.groupSettingUpdate(from, 'not_announcement');
 
         return reply(
           `꒰ᵎ 🔓 *GROUP OPENED* ᵎ꒱\n\n` +
@@ -506,7 +465,6 @@ module.exports = {
         );
       } catch (err) {
         console.error('OPEN ERROR:', err);
-
         return reply(
           `❌ Group open කරන්න බැරි වුණා.\n\n` +
           `${err.message || 'Unknown error'}`
@@ -516,7 +474,6 @@ module.exports = {
 
     // ============================================================
     // CLOSE GROUP
-    // Only admins can send messages
     // ============================================================
 
     if (command === 'close') {
@@ -524,10 +481,7 @@ module.exports = {
       if (!(await requireBotAdmin())) return;
 
       try {
-        await socket.groupSettingUpdate(
-          from,
-          'announcement'
-        );
+        await socket.groupSettingUpdate(from, 'announcement');
 
         return reply(
           `꒰ᵎ 🔒 *GROUP CLOSED* ᵎ꒱\n\n` +
@@ -536,7 +490,6 @@ module.exports = {
         );
       } catch (err) {
         console.error('CLOSE ERROR:', err);
-
         return reply(
           `❌ Group close කරන්න බැරි වුණා.\n\n` +
           `${err.message || 'Unknown error'}`
@@ -554,9 +507,7 @@ module.exports = {
 
       try {
         const code = await socket.groupInviteCode(from);
-
-        const link =
-          `https://chat.whatsapp.com/${code}`;
+        const link = `https://chat.whatsapp.com/${code}`;
 
         return socket.sendMessage(
           from,
@@ -571,7 +522,6 @@ module.exports = {
         );
       } catch (err) {
         console.error('LINK ERROR:', err);
-
         return reply(
           `❌ Group link ලබාගන්න බැරි වුණා.\n\n` +
           `${err.message || 'Unknown error'}`
@@ -588,11 +538,8 @@ module.exports = {
       if (!(await requireBotAdmin())) return;
 
       try {
-        const newCode =
-          await socket.groupRevokeInvite(from);
-
-        const newLink =
-          `https://chat.whatsapp.com/${newCode}`;
+        const newCode = await socket.groupRevokeInvite(from);
+        const newLink = `https://chat.whatsapp.com/${newCode}`;
 
         return socket.sendMessage(
           from,
@@ -607,7 +554,6 @@ module.exports = {
         );
       } catch (err) {
         console.error('REVOKE ERROR:', err);
-
         return reply(
           `❌ Group link reset කරන්න බැරි වුණා.\n\n` +
           `${err.message || 'Unknown error'}`
@@ -619,14 +565,9 @@ module.exports = {
     // GROUP INFO
     // ============================================================
 
-    if (
-      command === 'groupinfo' ||
-      command === 'ginfo'
-    ) {
+    if (command === 'groupinfo' || command === 'ginfo') {
       const admins = participants.filter(
-        p =>
-          p.admin === 'admin' ||
-          p.admin === 'superadmin'
+        p => p.admin === 'admin' || p.admin === 'superadmin'
       );
 
       const owner =
@@ -636,9 +577,7 @@ module.exports = {
 
       const creation =
         groupMetadata.creation
-          ? new Date(
-              groupMetadata.creation * 1000
-            ).toLocaleString('en-GB', {
+          ? new Date(groupMetadata.creation * 1000).toLocaleString('en-GB', {
               timeZone: 'Asia/Colombo'
             })
           : 'Unknown';
@@ -652,43 +591,12 @@ module.exports = {
         `❍ 👑 *Admins* ┊ ${admins.length}\n` +
         `❍ 🆔 *Group ID* ┊ ${from}\n` +
         `❍ 📅 *Created* ┊ ${creation}\n` +
-        `❍ 👤 *Owner* ┊ ${getBaseNumber(owner)}\n\n` +
+        `❍ 👤 *Owner* ┊ ${getBaseNumber(owner) || 'Unknown'}\n\n` +
 
         `🧚‍♀️ ©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ\n\n` +
         `𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃 🖤 | 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ`;
 
       return reply(info);
-    }
-
-    // ============================================================
-    // UNKNOWN GROUP COMMAND
-    // ============================================================
-
-    const groupCommands = [
-      'add',
-      'kick',
-      'remove',
-      'promote',
-      'demote',
-      'tagall',
-      'hidetag',
-      'setname',
-      'setdesc',
-      'setdescription',
-      'open',
-      'close',
-      'link',
-      'grouplink',
-      'revoke',
-      'groupinfo',
-      'ginfo'
-    ];
-
-    if (groupCommands.includes(command)) {
-      return reply(
-        `❌ Command එක process කරන්න බැරි වුණා.\n\n` +
-        `*${prefix}groupmanage* දාලා Group Manage Menu එක බලන්න.`
-      );
     }
   }
 };
