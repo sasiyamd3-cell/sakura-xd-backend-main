@@ -41,21 +41,24 @@ module.exports = {
     const isAutoReactEnabled = global.db?.autoreact?.[chatJid];
     if (!isAutoReactEnabled) return;
 
-    // ඔයා දුන් අංකය මෙතැනට දමා ඇත
-    const ownerJid = "94770475809@s.whatsapp.net"; 
+    // ඔයාගේ නම්බර් එක වෙනස් ආකාර කිහිපයකින් චෙක් කිරීමට
+    const targetNumber = "94770475809";
 
-    const senderJid = msg.key.participant || msg.participant;
+    // සෙන්ඩර් කවුද කියලා විවිධ තැන් වලින් ලබා ගැනීම (Baileys versions වල වෙනස් විය හැක)
+    const sender = msg.key.participant || msg.participant || msg.key.remoteJid;
     
-    if (senderJid === ownerJid) {
+    // ටර්මිනල් එකේ බලාගන්න මේක ප්‍රින්ට් වෙනවද කියලා
+    if (sender && sender.includes(targetNumber)) {
       try {
         await socket.sendMessage(chatJid, {
           react: {
-            text: '👑', // Crown emoji
+            text: '👑', 
             key: msg.key
           }
         });
+        console.log(`[AutoReact] Successfully reacted to owner message in ${chatJid}`);
       } catch (e) {
-        console.log("Auto-React Error:", e);
+        console.log("[Auto-React Error]:", e);
       }
     }
   }
