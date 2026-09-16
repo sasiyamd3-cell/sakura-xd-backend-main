@@ -33,7 +33,8 @@ module.exports = {
       global.db = global.db || { groups: {} };
       global.db.groups[chatJid] = global.db.groups[chatJid] || { antilink: false, antistatus: false };
 
-      if (!action) {
+      // මෙතැනදී action එකක් නැත්නම් හෝ වැරදි action එකක් දීලා තිබුණොත් මෙනුව පෙන්වන ලෙස සකස් කර ඇත
+      if (!action || !['open', 'close', 'name', 'desc', 'lock', 'unlock', 'add', 'kick', 'remove', 'promote', 'demote', 'tagall', 'antilink', 'antistatus'].includes(action)) {
         return reply(`꒰ᵎ 👥 *Group Management Menu* ᵎ꒱
 
 ✨ *Available Group Commands:*
@@ -177,10 +178,6 @@ module.exports = {
           } else {
             await reply(`⚠️ Please specify 'on' or 'off'!\n📌 *Example:* ${prefix}grup antistatus on`);
           }
-          break;
-
-        default:
-          await reply(`꒰ᵎ 👥 *Group Management* ᵎ꒱\n\n❌ Invalid action! Type *${prefix}grup* to see the menu.\n\n*${botName}* 🖤`);
           break;
       }
 
