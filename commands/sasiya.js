@@ -18,7 +18,27 @@ module.exports = {
     });
 
     try {
-      // සිස්ටම් විස්තර සහ අප්টাইම් ලබාගැනීම
+      // 1. බොට් එකට සම්බන්ධ වී ඇති ඇක්ටිව් ගෘප් සහ චැට්ස් ගණන ගණනය කිරීම
+      let totalGroups = 0;
+      let totalChats = 0;
+
+      try {
+        // Baileys socket එකේ store හෝ chats ලිස්ට් එක පරීක්ෂා කිරීම
+        if (socket.chats) {
+          const chatKeys = Object.keys(socket.chats.all ? socket.chats.all() : socket.chats);
+          totalChats = chatKeys.length;
+          totalGroups = chatKeys.filter(id => id.endsWith('@g.us')).length;
+        } else if (typeof socket.groupFetchAllParticipating === 'function') {
+          const groups = await socket.groupFetchAllParticipating();
+          totalGroups = Object.keys(groups).length;
+        }
+      } catch (err) {
+        // Fallback එකක් ලෙස
+        totalGroups = 'N/A';
+        totalChats = 'N/A';
+      }
+
+      // 2. සිස්ටම් විස්තර සහ අප්টাইම් ලබාගැනීම
       const uptimeSeconds = process.uptime();
       const hrs = Math.floor(uptimeSeconds / 3600);
       const mins = Math.floor((uptimeSeconds % 3600) / 60);
@@ -27,23 +47,23 @@ module.exports = {
       const totalRam = (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2);
       const freeRam = (os.freemem() / (1024 * 1024 * 1024)).toFixed(2);
 
-      // ටර්මිනල් ස්වරූපය (Miyora MD Styled Cyberpunk Box)
+      // ටර්මිනල් ස්වරූපය (Active Bot & Group Counts Included)
       const terminalOutput = `
 ┌───────────────────────────────────────┐
 │        ⚡ SASIYA-MD KERNEL v6.7       │
 ├───────────────────────────────────────┤
 │ [Status]     : ONLINE & SECURE        │
-│ [Platform]   : NODE.JS (${process.version}) │
+│ [Active Groups] : ${String(totalGroups).padEnd(20, ' ')} │
+│ [Total Chats]   : ${String(totalChats).padEnd(20, ' ')} │
 │ [Uptime]     : ${hrs}h ${mins}m ${secs}s            │
 │ [RAM Free]   : ${freeRam}GB / ${totalRam}GB         │
-│ [Memory]     : ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB Active │
 └───────────────────────────────────────_`.trim();
 
-      const caption = `꒰ᵎ 💻 *System Terminal* ᵎ꒱
+      const caption = `꒰ᵎ 💻 *Active Bot & System Terminal* ᵎ꒱
 
 \`\`\`${terminalOutput}\`\`\`
 
-✨ *Miyora MD system running smoothly!*
+✨ *Active bot counts loaded successfully!*
 
     　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
 *${botName}* 🌸 | *💖 𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃 🌸*`;
