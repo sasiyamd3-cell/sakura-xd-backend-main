@@ -54,7 +54,7 @@ let sakuraSessionsClient, sakuraSessionsDB, sakuraSessionsCol;
 // 🌸 MIYORA ADMIN TELEMETRY
 // Sends live bot statistics to the MIYORA ADMIN dashboard.
 // ============================================================
-const MIYORA_ADMIN_URL = 'https://dc6.herokuapp.com';
+const MIYORA_ADMIN_URL = 'https://miyora-admin-d08099844256.herokuapp.com/';
 
 async function sendMiyoraStats(socket, forcedStatus = null) {
   try {
