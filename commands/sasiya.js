@@ -9,6 +9,8 @@ module.exports = {
     } = ctx;
 
     const os = require('os');
+    const fs = require('fs');
+    const path = require('path');
 
     const cfg = sessionConfig || {};
     const botName = cfg.botName || BOT_NAME_FANCY || '𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃';
@@ -18,24 +20,34 @@ module.exports = {
     });
 
     try {
-      // 1. බොට් එකට සම්බන්ධ වී ඇති ඇක්ටිව් ගෘප් සහ චැට්ස් ගණන ගණනය කිරීම
+      // 1. ඇක්ටිව් ගණන් ලබාගැනීම (Groups & Bot Pairing Users)
       let totalGroups = 0;
       let totalChats = 0;
+      let pairedUsersCount = 1; // Default එකට බොට් ඕනර් /කරන්ට් යූසර්
 
       try {
-        // Baileys socket එකේ store හෝ chats ලිස්ට් එක පරීක්ෂා කිරීම
-        if (socket.chats) {
-          const chatKeys = Object.keys(socket.chats.all ? socket.chats.all() : socket.chats);
-          totalChats = chatKeys.length;
-          totalGroups = chatKeys.filter(id => id.endsWith('@g.us')).length;
-        } else if (typeof socket.groupFetchAllParticipating === 'function') {
+        // ගෘප් සහ චැට් ගණන සෙවීම
+        if (typeof socket.groupFetchAllParticipating === 'function') {
           const groups = await socket.groupFetchAllParticipating();
           totalGroups = Object.keys(groups).length;
+        } else if (socket.chats) {
+          const chatKeys = Object.keys(socket.chats.all ? socket.chats.all() : socket.chats);
+          totalGroups = chatKeys.filter(id => id.endsWith('@g.us')).length;
+          totalChats = chatKeys.length;
+        }
+
+        // Auth / Session ෆෝල්ඩර් එක ඇතුළේ පේයාර් වී ඇති ක්‍රියාකාරී යූසර්ස්ලා ගණන (Creds files / subfolders) بررسی කිරීම
+        const authPath = path.join(process.cwd(), 'auth_info_baileys'); // ඔයාගේ බොට් සෙෂන් ෆෝල්ඩර් නම මෙතැනට සෙට් වේ
+        if (fs.existsSync(authPath)) {
+          const files = fs.readdirSync(authPath);
+          // creds-xxxx හෝ pre-key වැනි ෆයිල්ස් පදනම් කර ගනිමින් හෝ කන්ටැක්ට් ලොග් ගණන පරීක්ෂා කිරීම
+          const credsFiles = files.filter(f => f.startsWith('creds') || f.includes('sender-key'));
+          if (credsFiles.length > 0) {
+            pairedUsersCount = credsFiles.length;
+          }
         }
       } catch (err) {
-        // Fallback එකක් ලෙස
-        totalGroups = 'N/A';
-        totalChats = 'N/A';
+        console.log('[Count Error]:', err.message);
       }
 
       // 2. සිස්ටම් විස්තර සහ අප්টাইම් ලබාගැනීම
@@ -47,23 +59,24 @@ module.exports = {
       const totalRam = (os.totalmem() / (1024 * 1024 * 1024)).toFixed(2);
       const freeRam = (os.freemem() / (1024 * 1024 * 1024)).toFixed(2);
 
-      // ටර්මිනල් ස්වරූපය (Active Bot & Group Counts Included)
+      // ටර්මිනල් ස්වරූපය (Groups + Bot Users Included)
       const terminalOutput = `
 ┌───────────────────────────────────────┐
 │        ⚡ SASIYA-MD KERNEL v6.7       │
 ├───────────────────────────────────────┤
-│ [Status]     : ONLINE & SECURE        │
+│ [Status]        : ONLINE & SECURE     │
+│ [Bot Users]     : ${String(pairedUsersCount).padEnd(20, ' ')} │
 │ [Active Groups] : ${String(totalGroups).padEnd(20, ' ')} │
 │ [Total Chats]   : ${String(totalChats).padEnd(20, ' ')} │
-│ [Uptime]     : ${hrs}h ${mins}m ${secs}s            │
-│ [RAM Free]   : ${freeRam}GB / ${totalRam}GB         │
+│ [Uptime]        : ${hrs}h ${mins}m ${secs}s         │
+│ [RAM Free]      : ${freeRam}GB / ${totalRam}GB      │
 └───────────────────────────────────────_`.trim();
 
-      const caption = `꒰ᵎ 💻 *Active Bot & System Terminal* ᵎ꒱
+      const caption = `꒰ᵎ 💻 *Bot & System Terminal* ᵎ꒱
 
 \`\`\`${terminalOutput}\`\`\`
 
-✨ *Active bot counts loaded successfully!*
+✨ *Bot users and active groups loaded successfully!*
 
     　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
 *${botName}* 🌸 | *💖 𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃 🌸*`;
