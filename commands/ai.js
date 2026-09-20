@@ -16,7 +16,7 @@ module.exports = {
       const cfg = sessionConfig; 
       const botName = cfg.botName || BOT_NAME_FANCY;
 
-      // Userගෙන් දුන් ප්‍රශ්නය ලබා ගැනීම (args හෝ q මඟින්)
+      // Userගෙන් දුන් ප්‍රශ්නය ලබා ගැනීම
       const prompt = args.join(" ").trim() || q;
 
       if (!prompt) {
@@ -37,18 +37,23 @@ module.exports = {
       });
 
       try {
-        // ඔයා දුන් DeepSeek API එක සහ API Key එක
         const apiKey = 'key_c03461a36ebeedc181b2890a4987c6fd';
         const apiUrl = `https://mr-thinuzz-api-build.vercel.app/api/deepseek/chat?text=${encodeURIComponent(prompt)}&apiKey=${apiKey}`;
 
         const response = await axios.get(apiUrl, { timeout: 30000 });
         
-        // API එකෙන් එන ප්‍රතිචාරය ලබා ගැනීම (JSON ෆෝමැට් එක මත පදනම්ව)
-        // (සාමාන්‍යයෙන් API වල result හෝ response හෝ message වැනි ෆීල්ඩ් එකක පිළිතුර තිබිය හැක)
-        const aiReply = response.data?.result || response.data?.response || response.data?.answer || response.data?.text || JSON.stringify(response.data);
+        // API එකෙන් එන JSON එකෙන් ඇත්තම උත්තරය (answer එක) ලබා ගැනීම
+        let rawAnswer = response.data?.data?.answer || response.data?.result || response.data?.response || response.data?.text;
+
+        if (!rawAnswer) {
+          throw new Error("Invalid API response format.");
+        }
+
+        // DeepSeek මගින් එන <think> ටැග් සහ ඒ ඇතුළේ ඇති කල්පනා කරන කොටස් ඉවත් කිරීම
+        let aiReply = rawAnswer.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 
         if (!aiReply) {
-          throw new Error("Invalid API response format.");
+            aiReply = rawAnswer;
         }
 
         const caption = `꒰ᵎ 🤖 *DeepSeek AI* ᵎ꒱
