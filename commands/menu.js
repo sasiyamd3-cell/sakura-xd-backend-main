@@ -1,345 +1,203 @@
 // Command: menu (aliases: help, allmenu)
-// Full Menu System
+// Auto-extracted and updated with Group Manage & AI System menus.
 module.exports = {
-    name: 'menu',
-    aliases: ['help', 'allmenu'],
+  name: 'menu',
+  aliases: ['help', 'allmenu'],
+  async execute(ctx) {
+    const {
+      socket, msg, sender, from, command, args, q, reply,
+      sessionConfig, number, prefix, config, BOT_NAME_FANCY,
+      NEWSLETTER_CONTEXT, resolveReplyJid, downloadQuotedMedia,
+      getSriLankaTimestamp, formatMessage, fs, path, os
+    } = ctx;
 
-    async execute(ctx) {
-        const {
-            socket,
-            msg,
-            sender,
-            from,
-            command,
-            args,
-            q,
-            reply,
-            sessionConfig,
-            number,
-            prefix,
-            config,
-            BOT_NAME_FANCY,
-            NEWSLETTER_CONTEXT,
-            resolveReplyJid,
-            downloadQuotedMedia,
-            getSriLankaTimestamp,
-            formatMessage,
-            fs,
-            path,
-            os
-        } = ctx;
+      const sanitized = (number || '').replace(/[^0-9]/g, '');
+      const cfg = sessionConfig || {};
+      const botName = cfg.botName || BOT_NAME_FANCY;
+      const logo    = cfg.logo    || config.IMAGE_PATH;
 
-        const sanitized = (number || '').replace(/[^0-9]/g, '');
-        const cfg = sessionConfig || {};
-        const botName = cfg.botName || BOT_NAME_FANCY;
-        const logo = cfg.logo || config.IMAGE_PATH;
+      const channelContext = {
+        forwardingScore: 1,
+        isForwarded: true,
+        forwardedNewsletterMessageInfo: {
+          newsletterJid: NEWSLETTER_CONTEXT?.forwardedNewsletterMessageInfo?.newsletterJid || '',
+          newsletterName: botName,
+          serverMessageId: 999,
+        }
+      };
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 📢 CHANNEL CONTEXT
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        const channelContext = {
-            forwardingScore: 1,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-                newsletterJid: NEWSLETTER_CONTEXT?.forwardedNewsletterMessageInfo?.newsletterJid,
-                newsletterName: botName,
-                serverMessageId: 999
-            }
-        };
+      const menuCaption =
+        `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *${botName} 𝐌𝐄𝐍𝐔* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
+        `┊ ┊ ✫ ˚♡ ⋆｡❀\n` +
+        `┊ ☪︎⋆\n\n` +
+        `> 💌 *ᴡᴇʟᴄᴏᴍᴇ ᴅᴀʀʟɪɴɢ, ᴘɪᴄᴋ ᴀ ᴄᴀᴛᴇɢᴏʀʏ~*\n\n` +
+        `❍ 1┊ ❮ *📋 ᴍᴀɪɴ ᴍᴇɴᴜ* ❯\n` +
+        `❍ 2┊ ❮ *📥 ᴅᴏᴡɴʟᴏᴀᴅ ᴍᴇɴᴜ* ❯\n` +
+        `❍ 3┊ ❮ *👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ* ❯\n` +
+        `❍ 4┊ ❮ *👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ* ❯\n` +
+        `❍ 5┊ ❮ *🤖 ᴀɪ sʏsᴛᴇᴍ* ❯\n` +
+        `❍ 6┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n\n` +
+        `* \`📩 Reply To Number (1-6)\`\n\n` +
+        `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
+        `*${botName}* 🖤 | *𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 🌸 MAIN MENU
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        const menuCaption = `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *${botName} 𝐌𝐄𝐍𝐔* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
-            `┊ ┊ ✫ ˚♡ ⋆｡❀\n` +
-            `┊ ☪︎⋆\n\n` +
-            `> 💌 *ᴡᴇʟᴄᴏᴍᴇ ᴅᴀʀʟɪɴɢ, ᴘɪᴄᴋ ᴀ ᴄᴀᴛᴇɢᴏʀʏ~*\n\n` +
-            `❍ 1┊ ❮ *📋 ᴍᴀɪɴ ᴍᴇɴᴜ* ❯\n` +
-            `❍ 2┊ ❮ *📥 ᴅᴏᴡɴʟᴏᴀᴅ ᴍᴇɴᴜ* ❯\n` +
-            `❍ 3┊ ❮ *👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ* ❯\n` +
-            `❍ 4┊ ❮ *👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ* ❯\n` +
-            `❍ 5┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n` +
-            `❍ 6┊ ❮ *🤖 ᴀɪ sʏsᴛᴇᴍ* ❯\n\n` +
-            `* \`📩 Reply To Number (1-6)\`\n\n` +
-            `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
-            `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
+      try {
+        await socket.sendMessage(sender, {
+          react: { text: '🌸', key: msg.key }
+        });
+      } catch (e) {}
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 🌸 MENU REACTION
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      let menuMsg;
+      try {
+        if (String(logo).startsWith('http')) {
+          menuMsg = await socket.sendMessage(sender, {
+            image: { url: logo },
+            caption: menuCaption,
+            contextInfo: channelContext
+          }, { quoted: msg });
+        } else {
+          try {
+            const buf = fs.readFileSync(logo);
+            menuMsg = await socket.sendMessage(sender, {
+              image: buf,
+              caption: menuCaption,
+              contextInfo: channelContext
+            }, { quoted: msg });
+          } catch (_e) {
+            menuMsg = await socket.sendMessage(sender, {
+              image: { url: config.IMAGE_PATH },
+              caption: menuCaption,
+              contextInfo: channelContext
+            }, { quoted: msg });
+          }
+        }
+      } catch (e) {
+        menuMsg = await socket.sendMessage(sender, {
+          text: menuCaption,
+          contextInfo: channelContext
+        }, { quoted: msg });
+      }
+
+      const subMenus = {
+        '1': {
+          title: '📋 ᴍᴀɪɴ ᴍᴇɴᴜ',
+          body:
+            `❍ *${prefix}menu* ┊ Show this cute menu\n` +
+            `❍ *${prefix}alive* ┊ Check bot status\n` +
+            `❍ *${prefix}ping* ┊ Check bot speed`
+        },
+        '2': {
+          title: '📥 ᴅᴏᴡɴʟᴏᴀᴅ ᴍᴇɴᴜ',
+          body:
+            `❍ *${prefix}song* ┊ Download a YouTube song\n` +
+            `❍ *${prefix}movie* ┊ Download Sinhala sub movie\n` +
+            `❍ *${prefix}cartoon* ┊ Download Sinhala cartoon\n` +
+            `❍ *${prefix}anime* ┊ Download anime\n` +
+            `❍ *${prefix}tiktok* ┊ Download TikTok video\n` +
+            `❍ *${prefix}fb* ┊ Download Facebook video\n` +
+            `❍ *${prefix}ig* ┊ Download Instagram media`
+        },
+        '3': {
+          title: '👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ',
+          body:
+            `❍ *${prefix}owner* ┊ Get owner contact card`
+        },
+        '4': {
+          title: '👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ',
+          body:
+            `❍ *${prefix}groupmanage* ┊ Open group manage menu\n` +
+            `❍ *${prefix}tagall* ┊ Tag all group members\n` +
+            `❍ *${prefix}hidetag* ┊ Hidden tag all members\n` +
+            `❍ *${prefix}kick* ┊ Remove a member from group\n` +
+            `❍ *${prefix}add* ┊ Add a member to group\n` +
+            `❍ *${prefix}promote* ┊ Promote member to admin\n` +
+            `❍ *${prefix}demote* ┊ Remove admin rights\n` +
+            `❍ *${prefix}open* ┊ Open group chat\n` +
+            `❍ *${prefix}close* ┊ Close group chat\n` +
+            `❍ *${prefix}groupinfo* ┊ Show group details`
+        },
+        '5': {
+          title: '🤖 ᴀɪ sʏsᴛᴇᴍ',
+          body:
+            `❍ *${prefix}ai* ┊ Chat with AI assistant\n` +
+            `❍ *${prefix}gpt* ┊ Ask from ChatGPT AI\n` +
+            `❍ *${prefix}gemini* ┊ Ask from Google Gemini AI\n` +
+            `❍ *${prefix}imagine* ┊ Generate AI image\n` +
+            `📌 *Example:* ${prefix}ai Hello bot`
+        },
+        '6': {
+          title: '🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ',
+          body:
+            `❍ *${prefix}vv* ┊ Unlock view-once media\n` +
+            `❍ *${prefix}send* ┊ Send media by url/reply\n` +
+            `❍ *${prefix}getpp* ┊ Get a user's profile picture`
+        }
+      };
+
+      const menuListener = async (msgUpdate) => {
+        const reply2 = msgUpdate.messages[0];
+        if (!reply2 || !reply2.message) return;
+
+        const isReplyToMenu = reply2.message?.extendedTextMessage?.contextInfo?.stanzaId === menuMsg.key.id;
+        const isSame = resolveReplyJid(reply2) === sender;
+        if (!isReplyToMenu || !isSame) return;
+
+        const text = (reply2.message?.conversation || reply2.message?.extendedTextMessage?.text || '').trim();
+        if (!['1', '2', '3', '4', '5', '6'].includes(text)) return;
+
+        socket.ev.off('messages.upsert', menuListener);
+
         try {
-            await socket.sendMessage(sender, {
-                react: {
-                    text: '🌸',
-                    key: msg.key
-                }
-            });
+          await socket.sendMessage(sender, { react: { text: '✨', key: reply2.key } });
         } catch (e) {}
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 📸 SEND MAIN MENU
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        let menuMsg;
+        const chosen = subMenus[text];
+
+        const subCaption =
+          `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *${chosen.title}* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
+          `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
+          `${chosen.body}\n\n` +
+          `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
+          `*${botName}* 🖤 | *𝐁ʟᴀ𝐜ᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
+
         try {
-            if (String(logo).startsWith('http')) {
-                menuMsg = await socket.sendMessage(
-                    sender, {
-                        image: {
-                            url: logo
-                        },
-                        caption: menuCaption,
-                        contextInfo: channelContext
-                    }, {
-                        quoted: msg
-                    }
-                );
-            } else {
-                try {
-                    const buf = fs.readFileSync(logo);
-                    menuMsg = await socket.sendMessage(
-                        sender, {
-                            image: buf,
-                            caption: menuCaption,
-                            contextInfo: channelContext
-                        }, {
-                            quoted: msg
-                        }
-                    );
-                } catch (fileErr) {
-                    // Fallback if local logo missing
-                    menuMsg = await socket.sendMessage(
-                        sender, {
-                            text: menuCaption,
-                            contextInfo: channelContext
-                        }, {
-                            quoted: msg
-                        }
-                    );
-                }
-            }
-        } catch (sendErr) {
-            console.error('[MENU] Failed to send main menu:', sendErr?.message || sendErr);
+          if (String(logo).startsWith('http')) {
+            await socket.sendMessage(sender, {
+              image: { url: logo },
+              caption: subCaption,
+              contextInfo: channelContext
+            }, { quoted: reply2 });
+          } else {
             try {
-                menuMsg = await socket.sendMessage(
-                    sender, {
-                        text: menuCaption,
-                        contextInfo: channelContext
-                    }, {
-                        quoted: msg
-                    }
-                );
-            } catch (e) {
-                console.error('[MENU] Critical send failure:', e?.message || e);
-                return;
+              const buf = fs.readFileSync(logo);
+              await socket.sendMessage(sender, {
+                image: buf,
+                caption: subCaption,
+                contextInfo: channelContext
+              }, { quoted: reply2 });
+            } catch (_e) {
+              await socket.sendMessage(sender, {
+                image: { url: config.IMAGE_PATH },
+                caption: subCaption,
+                contextInfo: channelContext
+              }, { quoted: reply2 });
             }
+          }
+        } catch (e) {
+          await socket.sendMessage(sender, {
+            text: subCaption,
+            contextInfo: channelContext
+          }, { quoted: reply2 });
         }
+      };
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 📋 CATEGORY DEFINITIONS
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        const categories = {
-            '1': {
-                title: '📋 ᴍᴀɪɴ ᴍᴇɴᴜ',
-                commands: [
-                    { cmd: 'menu', desc: 'Show main menu' },
-                    { cmd: 'ping', desc: 'Check bot speed' },
-                    { cmd: 'alive', desc: 'Check bot status' },
-                    { cmd: 'owner', desc: 'Show owner info' },
-                    { cmd: 'system', desc: 'System info' },
-                    { cmd: 'runtime', desc: 'Bot uptime' },
-                    { cmd: 'settings', desc: 'View settings' },
-                    { cmd: 'help', desc: 'Show help menu' },
-                    { cmd: 'allmenu', desc: 'Show all commands' },
-                    { cmd: 'info', desc: 'Bot info' }
-                ]
-            },
-            '2': {
-                title: '📥 ᴅᴏᴡɴʟᴏᴀᴅ ᴍᴇɴᴜ',
-                commands: [
-                    { cmd: 'play', desc: 'Play audio from YouTube' },
-                    { cmd: 'video', desc: 'Download YouTube video' },
-                    { cmd: 'song', desc: 'Download song' },
-                    { cmd: 'ytmp3', desc: 'YouTube to MP3' },
-                    { cmd: 'ytmp4', desc: 'YouTube to MP4' },
-                    { cmd: 'tiktok', desc: 'Download TikTok video' },
-                    { cmd: 'fb', desc: 'Download Facebook video' },
-                    { cmd: 'ig', desc: 'Download Instagram media' },
-                    { cmd: 'twitter', desc: 'Download Twitter/X video' },
-                    { cmd: 'spotify', desc: 'Download Spotify track' },
-                    { cmd: 'mediafire', desc: 'Download MediaFire file' },
-                    { cmd: 'apk', desc: 'Download APK' }
-                ]
-            },
-            '3': {
-                title: '👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ',
-                commands: [
-                    { cmd: 'mode', desc: 'Change bot mode' },
-                    { cmd: 'setprefix', desc: 'Change prefix' },
-                    { cmd: 'setbotname', desc: 'Change bot name' },
-                    { cmd: 'setlogo', desc: 'Change bot logo' },
-                    { cmd: 'restart', desc: 'Restart bot' },
-                    { cmd: 'shutdown', desc: 'Shutdown bot' },
-                    { cmd: 'broadcast', desc: 'Broadcast message' },
-                    { cmd: 'block', desc: 'Block a user' },
-                    { cmd: 'unblock', desc: 'Unblock a user' },
-                    { cmd: 'clearsession', desc: 'Clear session' },
-                    { cmd: 'eval', desc: 'Evaluate JS code' },
-                    { cmd: 'exec', desc: 'Execute shell command' },
-                    { cmd: 'join', desc: 'Join group via link' },
-                    { cmd: 'leave', desc: 'Leave current group' }
-                ]
-            },
-            '4': {
-                title: '👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ',
-                commands: [
-                    { cmd: 'kick', desc: 'Remove member' },
-                    { cmd: 'add', desc: 'Add member' },
-                    { cmd: 'promote', desc: 'Promote to admin' },
-                    { cmd: 'demote', desc: 'Demote from admin' },
-                    { cmd: 'mute', desc: 'Mute group' },
-                    { cmd: 'unmute', desc: 'Unmute group' },
-                    { cmd: 'lock', desc: 'Lock group settings' },
-                    { cmd: 'unlock', desc: 'Unlock group settings' },
-                    { cmd: 'tagall', desc: 'Tag all members' },
-                    { cmd: 'hidetag', desc: 'Hidden tag all' },
-                    { cmd: 'groupinfo', desc: 'Group information' },
-                    { cmd: 'link', desc: 'Get group link' },
-                    { cmd: 'revoke', desc: 'Revoke group link' },
-                    { cmd: 'welcome', desc: 'Toggle welcome message' },
-                    { cmd: 'goodbye', desc: 'Toggle goodbye message' },
-                    { cmd: 'antilink', desc: 'Toggle antilink' },
-                    { cmd: 'antispam', desc: 'Toggle antispam' }
-                ]
-            },
-            '5': {
-                title: '🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ',
-                commands: [
-                    { cmd: 'sticker', desc: 'Convert to sticker' },
-                    { cmd: 'toimg', desc: 'Sticker to image' },
-                    { cmd: 'attp', desc: 'Text to animated sticker' },
-                    { cmd: 'ttp', desc: 'Text to sticker' },
-                    { cmd: 'vv', desc: 'View once reveal' },
-                    { cmd: 'save', desc: 'Save media' },
-                    { cmd: 'translate', desc: 'Translate text' },
-                    { cmd: 'tts', desc: 'Text to speech' },
-                    { cmd: 'weather', desc: 'Get weather info' },
-                    { cmd: 'shorturl', desc: 'Shorten URL' },
-                    { cmd: 'qr', desc: 'Generate QR code' },
-                    { cmd: 'readqr', desc: 'Read QR code' },
-                    { cmd: 'password', desc: 'Generate password' },
-                    { cmd: 'calc', desc: 'Calculate expression' },
-                    { cmd: 'define', desc: 'Define a word' },
-                    { cmd: 'wiki', desc: 'Wikipedia search' },
-                    { cmd: 'news', desc: 'Latest news' },
-                    { cmd: 'quote', desc: 'Random quote' },
-                    { cmd: 'joke', desc: 'Random joke' },
-                    { cmd: 'fact', desc: 'Random fact' }
-                ]
-            },
-            '6': {
-                title: '🤖 ᴀɪ sʏsᴛᴇᴍ',
-                commands: [
-                    { cmd: 'ai', desc: 'Chat with AI assistant' },
-                    { cmd: 'gpt', desc: 'GPT AI response' },
-                    { cmd: 'gemini', desc: 'Google Gemini AI' },
-                    { cmd: 'imagine', desc: 'Generate AI image' },
-                    { cmd: 'img', desc: 'AI image generation' },
-                    { cmd: 'aiimg', desc: 'AI image (alias)' },
-                    { cmd: 'aivoice', desc: 'AI voice generator' },
-                    { cmd: 'aitranslate', desc: 'AI translate' },
-                    { cmd: 'aisummarize', desc: 'AI summarize text' },
-                    { cmd: 'aicode', desc: 'AI code generator' },
-                    { cmd: 'aicode', desc: 'AI code (alias)' },
-                    { cmd: 'aiwrite', desc: 'AI content writer' },
-                    { cmd: 'aistory', desc: 'AI story generator' },
-                    { cmd: 'aipoem', desc: 'AI poem generator' },
-                    { cmd: 'aimath', desc: 'AI math solver' },
-                    { cmd: 'aichat', desc: 'AI chat assistant' },
-                    { cmd: 'aicharacter', desc: 'AI character chat' },
-                    { cmd: 'aianalyze', desc: 'AI image analyze' },
-                    { cmd: 'airemover', desc: 'AI background remover' },
-                    { cmd: 'aiupscale', desc: 'AI image upscaler' },
-                    { cmd: 'aivoicechanger', desc: 'AI voice changer' },
-                    { cmd: 'aimusic', desc: 'AI music generator' },
-                    { cmd: 'aivideo', desc: 'AI video generator' }
-                ]
-            }
-        };
+      socket.ev.on('messages.upsert', menuListener);
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 📩 LISTEN FOR REPLY
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        const listener = async (update) => {
-            try {
-                const m = update.messages[0];
-                if (!m.message) return;
-                if (m.key.fromMe) return;
+      setTimeout(() => {
+        try {
+          socket.ev.off('messages.upsert', listener);
+        } catch (e) {}
+      }, 60000);
 
-                const remoteJid = m.key.remoteJid;
-                if (remoteJid !== sender) return;
-
-                // Check if replying to the menu message
-                const quotedId = m.message?.extendedTextMessage?.contextInfo?.stanzaId;
-                if (quotedId !== menuMsg.key.id) return;
-
-                const text = (
-                    m.message.conversation ||
-                    m.message.extendedTextMessage?.text ||
-                    m.message.imageMessage?.caption ||
-                    ''
-                ).trim();
-
-                const choice = text.match(/^([1-6])$/);
-                if (!choice) return;
-
-                const cat = categories[choice[1]];
-                if (!cat) return;
-
-                // Build category caption
-                let catCaption = `╭━━━〔 *${cat.title}* 〕━━━╮\n\n`;
-                cat.commands.forEach((c, i) => {
-                    const num = String(i + 1).padStart(2, '0');
-                    catCaption += `┃ ❍ ${num}┊ *${prefix}${c.cmd}*\n┃      ⤷ _${c.desc}_\n`;
-                });
-                catCaption += `\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n`;
-                catCaption += `> 🤖 *ᴛᴏᴛᴀʟ ᴄᴏᴍᴍᴀɴᴅꜱ:* ${cat.commands.length}\n`;
-                catCaption += `> 📌 *ᴘʀᴇꜰɪx:* \`${prefix}\`\n\n`;
-                catCaption += `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
-
-                await socket.sendMessage(
-                    sender, {
-                        text: catCaption,
-                        contextInfo: channelContext
-                    }, {
-                        quoted: m
-                    }
-                );
-
-                // React to confirm
-                try {
-                    await socket.sendMessage(sender, {
-                        react: {
-                            text: '✅',
-                            key: m.key
-                        }
-                    });
-                } catch (e) {}
-
-                // Cleanup listener after successful response
-                socket.ev.off('messages.upsert', listener);
-
-            } catch (err) {
-                console.error('[MENU LISTENER]', err?.message || err);
-            }
-        };
-
-        socket.ev.on('messages.upsert', listener);
-
-        // Auto-cleanup after 5 minutes
-        setTimeout(() => {
-            try {
-                socket.ev.off('messages.upsert', listener);
-            } catch (e) {}
-        }, 5 * 60 * 1000);
-    }
+  }
 };
