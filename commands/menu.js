@@ -1,5 +1,5 @@
 // Command: menu (aliases: help, allmenu)
-// Auto-extracted and updated with Group Manage & AI System menus.
+// Auto-extracted and updated with correct Group Manage and AI System sub-menus.
 module.exports = {
   name: 'menu',
   aliases: ['help', 'allmenu'],
@@ -38,8 +38,8 @@ module.exports = {
         `❍ 5┊ ❮ *🤖 ᴀɪ sʏsᴛᴇᴍ* ❯\n` +
         `❍ 6┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n\n` +
         `* \`📩 Reply To Number (1-6)\`\n\n` +
-        `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
-        `*${botName}* 🖤 | *𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
+        `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
+        `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
       try {
         await socket.sendMessage(sender, {
@@ -105,16 +105,19 @@ module.exports = {
         '4': {
           title: '👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ',
           body:
-            `❍ *${prefix}groupmanage* ┊ Open group manage menu\n` +
-            `❍ *${prefix}tagall* ┊ Tag all group members\n` +
-            `❍ *${prefix}hidetag* ┊ Hidden tag all members\n` +
-            `❍ *${prefix}kick* ┊ Remove a member from group\n` +
-            `❍ *${prefix}add* ┊ Add a member to group\n` +
-            `❍ *${prefix}promote* ┊ Promote member to admin\n` +
-            `❍ *${prefix}demote* ┊ Remove admin rights\n` +
-            `❍ *${prefix}open* ┊ Open group chat\n` +
-            `❍ *${prefix}close* ┊ Close group chat\n` +
-            `❍ *${prefix}groupinfo* ┊ Show group details`
+            `❍ *${prefix}grup open* 🔓 ┊ Open group for everyone\n` +
+            `❍ *${prefix}grup close* 🔒 ┊ Close group for admins\n` +
+            `❍ *${prefix}grup name* ✏️ ┊ Change group name\n` +
+            `❍ *${prefix}grup desc* 📝 ┊ Change group description\n` +
+            `❍ *${prefix}grup lock* 📌 ┊ Lock group settings\n` +
+            `❍ *${prefix}grup unlock* 🔓 ┊ Unlock group settings\n` +
+            `❍ *${prefix}grup add* ➕ ┊ Add a member by number\n` +
+            `❍ *${prefix}grup kick* 👢 ┊ Remove quoted/mentioned user\n` +
+            `❍ *${prefix}grup promote* 👑 ┊ Promote user to admin\n` +
+            `❍ *${prefix}grup demote* 🔻 ┊ Demote admin from user\n` +
+            `❍ *${prefix}grup tagall* 🏷️ ┊ Tag all group members\n` +
+            `❍ *${prefix}grup antilink* 🛡️ ┊ Toggle auto-delete links\n` +
+            `❍ *${prefix}grup antistatus* 🛡️ ┊ Toggle status/promo links`
         },
         '5': {
           title: '🤖 ᴀɪ sʏsᴛᴇᴍ',
@@ -123,7 +126,7 @@ module.exports = {
             `❍ *${prefix}gpt* ┊ Ask from ChatGPT AI\n` +
             `❍ *${prefix}gemini* ┊ Ask from Google Gemini AI\n` +
             `❍ *${prefix}imagine* ┊ Generate AI image\n` +
-            `📌 *Example:* ${prefix}ai Hello bot`
+            `📌 *Example:* ${prefix}ai What is quantum physics?`
         },
         '6': {
           title: '🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ',
@@ -157,8 +160,8 @@ module.exports = {
           `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *${chosen.title}* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
           `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
           `${chosen.body}\n\n` +
-          `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀ𝐜𝐤 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
-          `*${botName}* 🖤 | *𝐁ʟᴀ𝐜ᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
+          `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
+          `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
         try {
           if (String(logo).startsWith('http')) {
@@ -195,7 +198,7 @@ module.exports = {
 
       setTimeout(() => {
         try {
-          socket.ev.off('messages.upsert', listener);
+          socket.ev.off('messages.upsert', menuListener);
         } catch (e) {}
       }, 60000);
 
