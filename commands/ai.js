@@ -1,80 +1,93 @@
-// Command: ai (aliases: qlony, chatgpt, ask)
+// Command: ai (aliases: deepseek, ask, chat)
+// Auto-extracted from sakura.js switch-case during commandLoader refactor.
+const axios = require('axios');
+
 module.exports = {
   name: 'ai',
-  aliases: ['qlony', 'chatgpt', 'ask'],
+  aliases: ['deepseek', 'ask', 'chat'],
   async execute(ctx) {
     const {
-      socket, msg, sender, args, reply,
-      sessionConfig, prefix, BOT_NAME_FANCY
+      socket, msg, sender, from, command, args, q, reply,
+      sessionConfig, number, prefix, config, BOT_NAME_FANCY,
+      NEWSLETTER_CONTEXT, resolveReplyJid
     } = ctx;
 
-    const axios = require('axios');
+      const sanitized = (number || '').replace(/[^0-9]/g, '');
+      const cfg = sessionConfig; 
+      const botName = cfg.botName || BOT_NAME_FANCY;
 
-    const cfg = sessionConfig;
-    const botName = cfg?.botName || BOT_NAME_FANCY || 'Black Cat';
+      // Userගෙන් දුන් ප්‍රශ්නය ලබා ගැනීම (args හෝ q මඟින්)
+      const prompt = args.join(" ").trim() || q;
 
-    // Text එක ලබා ගැනීම (උදා: .ai Hi හෝ .ai Spiderman ගැන කියන්න)
-    const textQuery = args.join(" ").trim();
+      if (!prompt) {
+        return reply(`꒰ᵎ 🤖 *DeepSeek AI* ᵎ꒱
 
-    if (!textQuery) {
-      return reply(`꒰ᵎ 🤖 *AI Assistant* ᵎ꒱
+    ⚠️ Please provide a prompt or question!
 
-⚠️ Please type a message or question for the AI!
+    📌 *Usage:* ${prefix}ai <your question>
+    📌 *Example:* ${prefix}ai How to write a bot in Node.js?
 
-📌 *Usage:* ${prefix}ai <your question>
-📌 *Example:* ${prefix}ai What is JavaScript?
-
-　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ Oꜰᴄ*`);
-    }
-
-    // සෙවුම් ප්‍රතිචාරය සඳහා රියැක්ට් එකක් දැමීම
-    await socket.sendMessage(sender, {
-      react: { text: '🤖', key: msg.key }
-    });
-
-    try {
-      const apiKey = 'zanta_hjLBxGQQOA9GpTaicPJP17Kn';
-      const apiUrl = `https://api.zanta-mini.store/api/qlony?apiKey=${apiKey}&text=${encodeURIComponent(textQuery)}`;
-
-      const response = await axios.get(apiUrl, { timeout: 30000 });
-      const apiData = response.data;
-
-      // API එකෙන් එන රෙස්පොන්ස් එකේ format එක අනුව ටෙක්ස්ට් එක ලබා ගැනීම
-      // (സാමාන්‍යයෙන් result, message හෝ text යන key එකක් යටතේ රෙස්පොන්ස් එක එන්න පුළුවන්)
-      const aiAnswer = apiData?.result || apiData?.message || apiData?.text || apiData?.data || JSON.stringify(apiData, null, 2);
-
-      if (!aiAnswer) {
-        return reply(`꒰ᵎ 🤖 *AI Assistant* ᵎ꒱
-
-❌ Received an empty response from the AI server!
-
-　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤`);
+    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+    *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
       }
 
-      const formattedReply = `꒰ᵎ 🤖 *AI Assistant* ᵎ꒱
-
-${aiAnswer}
-
-　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
-
+      // ලෝඩින් රියැක්ට් එකක් දැමීම
       await socket.sendMessage(sender, {
-        text: formattedReply
-      }, { quoted: msg });
-
-      await socket.sendMessage(sender, {
-        react: { text: '✨', key: msg.key }
+        react: { text: '🤖', key: msg.key }
       });
 
-    } catch (error) {
-      console.log('[ai command error]:', error.message);
-      await reply(`꒰ᵎ ❌ *AI Error* ᵎ꒱
+      try {
+        // ඔයා දුන් DeepSeek API එක සහ API Key එක
+        const apiKey = 'key_c03461a36ebeedc181b2890a4987c6fd';
+        const apiUrl = `https://mr-thinuzz-api-build.vercel.app/api/deepseek/chat?text=${encodeURIComponent(prompt)}&apiKey=${apiKey}`;
 
-⚠️ Failed to connect to the AI server. Please try again later!
+        const response = await axios.get(apiUrl, { timeout: 30000 });
+        
+        // API එකෙන් එන ප්‍රතිචාරය ලබා ගැනීම (JSON ෆෝමැට් එක මත පදනම්ව)
+        // (සාමාන්‍යයෙන් API වල result හෝ response හෝ message වැනි ෆීල්ඩ් එකක පිළිතුර තිබිය හැක)
+        const aiReply = response.data?.result || response.data?.response || response.data?.answer || response.data?.text || JSON.stringify(response.data);
 
+        if (!aiReply) {
+          throw new Error("Invalid API response format.");
+        }
+
+        const caption = `꒰ᵎ 🤖 *DeepSeek AI* ᵎ꒱
+
+${aiReply}
+
+    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+> 📌 *Prompt:* ${prompt}
+*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
+
+        // නිව්ස්ලෙටර් කොන්ටෙක්ට් එක සමඟ පිළිතුර යැවීම
+        const nlCtx = {
+          forwardingScore: 1,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
+            newsletterName: botName,
+            serverMessageId: 999,
+          }
+        };
+
+        await socket.sendMessage(sender, {
+          text: caption,
+          contextInfo: nlCtx
+        }, { quoted: msg });
+
+        await socket.sendMessage(sender, {
+          react: { text: '✨', key: msg.key }
+        });
+
+      } catch (e) {
+        console.log('[ai] API error:', e.message);
+        return reply(`꒰ᵎ ❌ *Error* ᵎ꒱
+
+⚠️ Failed to fetch response from DeepSeek AI!
+🔍 Error: ${e.message}
+
+    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
 *${botName}* 🖤`);
-    }
+      }
   }
 };
