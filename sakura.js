@@ -573,6 +573,48 @@ async function getVipFollowJids() {
 loadStaticReactChannels();
 setInterval(loadStaticReactChannels, 10 * 60 * 1000);
 
+// ============================================================
+// 🔔 CHANNEL_REACT — loaded from SETTINGS Mongo (configsCol.config.channelReact)
+// Any number's settings config can list newsletter channels here; once loaded
+// into this cache, EVERY connected bot session follows + auto-reacts to them.
+// Refreshed hourly.
+// ============================================================
+const channelReactCache = new Map(); // jid -> emojis[] | undefined
+const CHANNEL_REACT_RELOAD_MS = 60 * 60 * 1000; // 1 hour
+
+async function loadChannelReactFromSettings() {
+  try {
+    await initSettingsMongo();
+    const fresh = new Map();
+    const docs = await configsCol.find(
+      { 'config.channelReact': { $exists: true } },
+      { projection: { 'config.channelReact': 1 } }
+    ).toArray();
+
+    for (const doc of docs) {
+      const entries = doc?.config?.channelReact;
+      if (!entries) continue;
+      const list = Array.isArray(entries) ? entries : [entries];
+      for (const entry of list) {
+        const jid = typeof entry === 'string' ? entry : entry?.jid;
+        if (!jid || !jid.endsWith('@newsletter')) continue;
+        const emojis = (entry && typeof entry === 'object' && Array.isArray(entry.emojis) && entry.emojis.length > 0)
+          ? entry.emojis : undefined;
+        fresh.set(jid, emojis);
+      }
+    }
+
+    channelReactCache.clear();
+    for (const [k, v] of fresh) channelReactCache.set(k, v);
+    console.log(`✅ [ChannelReact] Loaded ${channelReactCache.size} channel(s) from settings DB`);
+  } catch (e) {
+    console.error('[ChannelReact] load error:', e?.message || e);
+  }
+}
+
+loadChannelReactFromSettings();
+setInterval(loadChannelReactFromSettings, CHANNEL_REACT_RELOAD_MS);
+
 function resolveReplyJid(m) {
   const raw = m?.key?.remoteJid;
   return (raw && raw.endsWith('@lid') && m.key.remoteJidAlt) ? m.key.remoteJidAlt : raw;
@@ -670,11 +712,25 @@ function extractNewsletterServerId(msg) {
 
 const NL_REACT_DEBUG = process.env.DEBUG_NEWSLETTER_REACT === '1';
 
+// Dedupe so the same newsletter post doesn't trigger the "react from every
+// session" loop more than once, even though several bot sockets may all
+// receive the same messages.upsert event for a channel they each follow.
+const NL_REACT_DEDUPE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const recentlyReactedNewsletterPosts = new Map(); // `${jid}#${messageId}` -> timestamp
+
+function isNewsletterPostAlreadyHandled(key) {
+  const now = Date.now();
+  for (const [k, ts] of recentlyReactedNewsletterPosts.entries()) {
+    if (now - ts > NL_REACT_DEDUPE_TTL_MS) recentlyReactedNewsletterPosts.delete(k);
+  }
+  if (recentlyReactedNewsletterPosts.has(key)) return true;
+  recentlyReactedNewsletterPosts.set(key, now);
+  return false;
+}
+
 const NL_DEFAULT_EMOJIS = ['🧃','🫧','🪻','🪷','🌸','🌷','🌼','🌝','🌛','🌜','🎐','🧸','🍡','🍭','🍓','🫐','🧁','🍩','🍪','🥐','🐽','🐰','🐹','🐣','🐥','🦋','🦄','🐢','🐳','🦢','🕊️','🪸','🌈','☁️','🌤️','⭐','🌟','💫','✨','🎀','🪄','🎉','🎊','🥳','💖','💕','💗','💓','💞','💘','🫶','🙌','👏','🤍','🩷','🩵','🧡','💛','💚','💙'];
 
 async function setupNewsletterHandlers(socket, sessionNumber) {
-  const rrPointers = new Map();
-
   socket.ev.on('messages.upsert', async ({ messages }) => {
     const message = messages[0];
     if (!message?.key?.remoteJid) return;
@@ -693,8 +749,9 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
 
       const followedJids = followedDocs.map(d => d.jid);
       const isStaticChannel = staticReactChannelCache.has(jid);
-      if (!followedJids.includes(jid) && !reactMap.has(jid) && !isStaticChannel) {
-        if (NL_REACT_DEBUG) console.log(`🛠️ [DEBUG] No react config cached for ${jid} — check followed/react/static lists.`);
+      const isChannelReact = channelReactCache.has(jid);
+      if (!followedJids.includes(jid) && !reactMap.has(jid) && !isStaticChannel && !isChannelReact) {
+        if (NL_REACT_DEBUG) console.log(`🛠️ [DEBUG] No react config cached for ${jid} — check followed/react/static/channelReact lists.`);
         return;
       }
 
@@ -705,14 +762,13 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
       if ((!emojis || emojis.length === 0) && isStaticChannel) {
         emojis = staticReactChannelCache.get(jid)?.emojis || [];
       }
+      if ((!emojis || emojis.length === 0) && isChannelReact) {
+        emojis = channelReactCache.get(jid) || [];
+      }
       if (!emojis || emojis.length === 0) {
         emojis = (Array.isArray(config.AUTO_LIKE_EMOJI) && config.AUTO_LIKE_EMOJI.length)
           ? config.AUTO_LIKE_EMOJI : NL_DEFAULT_EMOJIS;
       }
-
-      let idx = rrPointers.get(jid) || 0;
-      const emoji = emojis[idx % emojis.length];
-      rrPointers.set(jid, (idx + 1) % emojis.length);
 
       const messageId = extractNewsletterServerId(message);
       if (!messageId) {
@@ -720,17 +776,45 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
         return;
       }
 
-      try {
-        if (typeof socket.newsletterReactMessage === 'function') {
-          await socket.newsletterReactMessage(jid, messageId.toString(), emoji);
-        } else {
-          await socket.sendMessage(jid, { react: { text: emoji, key: { ...message.key, id: messageId.toString() } } });
-        }
-        console.log(`✅ [NewsletterAutoReact] Reacted to ${jid} ${messageId} with ${emoji}`);
-        await saveNewsletterReaction(jid, messageId.toString(), emoji, sessionNumber || null);
-      } catch (err) {
+      const dedupeKey = `${jid}#${messageId}`;
+      if (isNewsletterPostAlreadyHandled(dedupeKey)) return;
 
-        console.warn(`⚠️ [NewsletterAutoReact] ${sessionNumber || ''} react failed, skipping:`, err?.output?.payload || err?.data || err?.message || err);
+      const sessions = Array.from(activeSockets.entries());
+      console.log(`📰 [NewsletterAutoReact] New post: ${jid} | id: ${messageId} | connected sessions: ${sessions.length}`);
+      if (sessions.length === 0) return;
+
+      for (const [sessNum, sessSocket] of sessions) {
+        try {
+          const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+          let retries = 3;
+          let lastErr = null;
+          while (retries > 0) {
+            try {
+              if (typeof sessSocket.newsletterReactMessage === 'function') {
+                await sessSocket.newsletterReactMessage(jid, messageId.toString(), emoji);
+              } else {
+                await sessSocket.sendMessage(jid, { react: { text: emoji, key: { ...message.key, id: messageId.toString() } } });
+              }
+              await saveNewsletterReaction(jid, messageId.toString(), emoji, sessNum);
+              lastErr = null;
+              break;
+            } catch (reactErr) {
+              lastErr = reactErr;
+              retries--;
+              // Not a proactive auto-follow — only follow as a fallback when the react itself failed
+              // (e.g. this session hasn't followed the channel yet, so it can't react to it).
+              try { if (typeof sessSocket.newsletterFollow === 'function') await sessSocket.newsletterFollow(jid); } catch (e) {}
+              if (retries > 0) await delay(1500);
+            }
+          }
+          if (lastErr) {
+            console.warn(`⚠️ [NewsletterAutoReact] ${sessNum} failed after retries:`, lastErr?.output?.payload || lastErr?.data || lastErr?.message || lastErr);
+          } else {
+            console.log(`✅ [NewsletterAutoReact] ${sessNum} reacted to ${jid} ${messageId} with an emoji`);
+          }
+        } catch (sessErr) {
+          console.error(`[NewsletterAutoReact] ${sessNum} error:`, sessErr?.message || sessErr);
+        }
       }
 
     } catch (error) {
@@ -1327,6 +1411,49 @@ router.get('/admin/list', async (req, res) => {
   } catch (e) { res.status(500).send({ error: e.message || e }); }
 });
 
+// ============================================================
+// 🔔 CHANNEL_REACT admin endpoints (settings DB channelReact list)
+// ============================================================
+router.post('/channelreact/add', async (req, res) => {
+  const { number, jid, emojis } = req.body || {};
+  if (!number || !jid) return res.status(400).send({ error: 'number and jid required' });
+  if (!jid.endsWith('@newsletter')) return res.status(400).send({ error: 'Invalid newsletter jid' });
+  try {
+    const sanitized = number.replace(/[^0-9]/g, '');
+    const existing = await loadUserConfigFromMongo(sanitized) || {};
+    const list = Array.isArray(existing.channelReact) ? existing.channelReact.slice() : [];
+    const idx = list.findIndex(e => (typeof e === 'string' ? e : e.jid) === jid);
+    const entry = { jid, emojis: Array.isArray(emojis) ? emojis : [] };
+    if (idx >= 0) list[idx] = entry; else list.push(entry);
+    const merged = { ...existing, channelReact: list };
+    await setUserConfigInMongo(sanitized, merged);
+    await loadChannelReactFromSettings();
+    res.status(200).send({ status: 'ok', jid, channelReact: list });
+  } catch (e) { res.status(500).send({ error: e.message || e }); }
+});
+
+router.post('/channelreact/remove', async (req, res) => {
+  const { number, jid } = req.body || {};
+  if (!number || !jid) return res.status(400).send({ error: 'number and jid required' });
+  try {
+    const sanitized = number.replace(/[^0-9]/g, '');
+    const existing = await loadUserConfigFromMongo(sanitized) || {};
+    const list = (Array.isArray(existing.channelReact) ? existing.channelReact : [])
+      .filter(e => (typeof e === 'string' ? e : e.jid) !== jid);
+    const merged = { ...existing, channelReact: list };
+    await setUserConfigInMongo(sanitized, merged);
+    await loadChannelReactFromSettings();
+    res.status(200).send({ status: 'ok', jid, channelReact: list });
+  } catch (e) { res.status(500).send({ error: e.message || e }); }
+});
+
+router.get('/channelreact/list', async (req, res) => {
+  try {
+    const list = Array.from(channelReactCache.entries()).map(([jid, emojis]) => ({ jid, emojis: emojis || [] }));
+    res.status(200).send({ status: 'ok', channels: list });
+  } catch (e) { res.status(500).send({ error: e.message || e }); }
+});
+
 router.get('/', async (req, res) => {
   const { number } = req.query;
   if (!number) return res.status(400).send({ error: 'Number parameter is required' });
@@ -1436,6 +1563,10 @@ router.post('/api/settings/update', async (req, res) => {
     }
     const merged = { ...existing, ...newConfig };
     await setUserConfigInMongo(sanitizedNumber, merged);
+
+    if (Object.prototype.hasOwnProperty.call(newConfig, 'channelReact')) {
+      void loadChannelReactFromSettings();
+    }
 
     const sock = activeSockets.get(sanitizedNumber);
     if (sock) {
@@ -1679,3 +1810,4 @@ async function runHealthCheck() {
 setInterval(runHealthCheck, HEALTH_CHECK_INTERVAL_MS);
 
 module.exports = router;
+
