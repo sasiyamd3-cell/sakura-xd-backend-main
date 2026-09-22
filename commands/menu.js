@@ -1,5 +1,6 @@
-// Command: menu (aliases: help, allmenu)
+// Command: menu (aliases help, allmenu)
 // Auto-extracted and updated with correct Group Manage and AI System sub-menus.
+// Updated: Pairing site link added beautifully at the bottom of menu
 module.exports = {
   name: 'menu',
   aliases: ['help', 'allmenu'],
@@ -15,6 +16,9 @@ module.exports = {
       const cfg = sessionConfig || {};
       const botName = cfg.botName || BOT_NAME_FANCY;
       const logo    = cfg.logo    || config.IMAGE_PATH;
+
+      // 🔗 Pairing Site Link
+      const PAIRING_SITE = 'https://miyora.kurox.site';
 
       const channelContext = {
         forwardingScore: 1,
@@ -38,6 +42,10 @@ module.exports = {
         `❍ 5┊ ❮ *🤖 ᴀɪ sʏsᴛᴇᴍ* ❯\n` +
         `❍ 6┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n\n` +
         `* \`📩 Reply To Number (1-6)\`\n\n` +
+        `╭─────────────────╮\n` +
+        `   🔗 *ᴘᴀɪʀɪɴɢ ꜱɪᴛᴇ* 🔗\n` +
+        `╰─────────────────╯\n` +
+        `   ➥ ${PAIRING_SITE}\n\n` +
         `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
         `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
@@ -160,6 +168,10 @@ module.exports = {
           `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *${chosen.title}* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
           `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
           `${chosen.body}\n\n` +
+          `╭─────────────────╮\n` +
+          `   🔗 *ᴘᴀɪʀɪɴɢ ꜱɪᴛᴇ* 🔗\n` +
+          `╰─────────────────╯\n` +
+          `   ➥ ${PAIRING_SITE}\n\n` +
           `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
           `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
