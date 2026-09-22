@@ -4,60 +4,63 @@ const os = require("os");
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 require("events").EventEmitter.defaultMaxListeners = 500;
 
-// ======================================================
-// MIYORA MD - SINGLE FILE ADMIN DASHBOARD
-// ======================================================
+// ============================================================
+// MIYORA MD CONTROL CENTER
+// Single index.js
+// ============================================================
 
 const BOT_NAME = "MIYORA MD";
 const BOT_VERSION = "V1.0.0";
 
-let errorCount = 0;
+let botData = {
+    status: "offline",
+    botName: BOT_NAME,
+    botNumber: "Not connected",
+
+    groups: 0,
+    users: 0,
+    sessions: 0,
+
+    speed: 0,
+    errors: 0,
+
+    lastUpdate: null
+};
+
+const history = [];
+
 const startedAt = Date.now();
 
 
-// ======================================================
-// SYSTEM DATA
-// ======================================================
+// ============================================================
+// SYSTEM FUNCTIONS
+// ============================================================
 
 function getMemory() {
     const m = process.memoryUsage();
 
     return {
-        rss: (m.rss / 1024 / 1024).toFixed(1),
-        heap: (m.heapUsed / 1024 / 1024).toFixed(1),
-        total: (os.totalmem() / 1024 / 1024).toFixed(0)
+        rss: +(m.rss / 1024 / 1024).toFixed(2),
+        heap: +(m.heapUsed / 1024 / 1024).toFixed(2),
+        total: +(os.totalmem() / 1024 / 1024).toFixed(0)
     };
 }
 
 
-function getUptime() {
-    let s = Math.floor(process.uptime());
-
-    const d = Math.floor(s / 86400);
-    s %= 86400;
-
-    const h = Math.floor(s / 3600);
-    s %= 3600;
-
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-
-    return `${d}d ${h}h ${m}m ${sec}s`;
-}
-
-
 function getCPU() {
+
     const cpus = os.cpus();
 
     let idle = 0;
     let total = 0;
 
     for (const cpu of cpus) {
+
         idle += cpu.times.idle;
 
         total +=
@@ -68,18 +71,55 @@ function getCPU() {
             cpu.times.irq;
     }
 
-    if (!total) return "0.0";
+    if (!total) return 0;
 
-    return Math.min(
+    return +Math.min(
         100,
         Math.max(0, 100 - (idle / total) * 100)
     ).toFixed(1);
 }
 
 
-// ======================================================
+function getUptime() {
+
+    let seconds = Math.floor(process.uptime());
+
+    const days = Math.floor(seconds / 86400);
+    seconds %= 86400;
+
+    const hours = Math.floor(seconds / 3600);
+    seconds %= 3600;
+
+    const minutes = Math.floor(seconds / 60);
+    seconds %= 60;
+
+    return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+}
+
+
+function saveHistory() {
+
+    const memory = getMemory();
+
+    history.push({
+        time: new Date().toLocaleTimeString(),
+        speed: Number(botData.speed || 0),
+        ram: Number(memory.rss || 0),
+        cpu: Number(getCPU() || 0),
+        groups: Number(botData.groups || 0),
+        users: Number(botData.users || 0)
+    });
+
+    // Keep last 30 points
+    if (history.length > 30) {
+        history.shift();
+    }
+}
+
+
+// ============================================================
 // HOME
-// ======================================================
+// ============================================================
 
 app.get("/", (req, res) => {
 
@@ -88,57 +128,136 @@ app.get("/", (req, res) => {
         bot: BOT_NAME,
         version: BOT_VERSION,
         uptime: getUptime(),
-        message: `${BOT_NAME} is running successfully.`
+        admin: "/admin",
+        api: "/api/stats",
+        message: `${BOT_NAME} control server is running.`
     });
 
 });
 
 
-// ======================================================
-// LIVE API
-// ======================================================
+// ============================================================
+// BOT UPDATE API
+// MIYORA BOT → DASHBOARD
+// ============================================================
+
+app.post("/api/bot/update", (req, res) => {
+
+    try {
+
+        const data = req.body || {};
+
+        botData = {
+            ...botData,
+
+            status:
+                data.status !== undefined
+                    ? String(data.status)
+                    : botData.status,
+
+            botName:
+                data.botName ||
+                botData.botName,
+
+            botNumber:
+                data.botNumber ||
+                botData.botNumber,
+
+            groups:
+                Number(data.groups ?? botData.groups),
+
+            users:
+                Number(data.users ?? botData.users),
+
+            sessions:
+                Number(data.sessions ?? botData.sessions),
+
+            speed:
+                Number(data.speed ?? botData.speed),
+
+            errors:
+                Number(data.errors ?? botData.errors),
+
+            lastUpdate:
+                new Date().toISOString()
+        };
+
+        saveHistory();
+
+        res.json({
+            success: true,
+            message: "Bot data updated successfully.",
+            data: botData
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to update bot data."
+        });
+
+    }
+
+});
+
+
+// ============================================================
+// BOT OFFLINE API
+// ============================================================
+
+app.post("/api/bot/offline", (req, res) => {
+
+    botData.status = "offline";
+    botData.lastUpdate = new Date().toISOString();
+
+    res.json({
+        success: true,
+        status: "offline"
+    });
+
+});
+
+
+// ============================================================
+// LIVE STATS
+// ============================================================
 
 app.get("/api/stats", (req, res) => {
 
     const memory = getMemory();
 
-    const start = Date.now();
-
     res.json({
-        status: "online",
 
-        botName: BOT_NAME,
-        version: BOT_VERSION,
+        server: {
+            status: "online",
+            uptime: getUptime(),
 
-        sessions: 1,
-        groups: 0,
-        users: 0,
+            memory: memory,
 
-        speed: Date.now() - start,
+            cpu: getCPU(),
 
-        ram: memory.rss,
-        heap: memory.heap,
-        totalRam: memory.total,
+            node: process.version,
+            platform: os.platform(),
+            arch: os.arch()
+        },
 
-        cpu: getCPU(),
+        bot: {
+            ...botData
+        },
 
-        uptime: getUptime(),
+        history: history
 
-        node: process.version,
-        platform: os.platform(),
-        arch: os.arch(),
-
-        errors: errorCount,
-
-        time: new Date().toISOString()
     });
 
 });
 
 
-// ======================================================
+// ============================================================
 // ADMIN DASHBOARD
-// ======================================================
+// ============================================================
 
 app.get("/admin", (req, res) => {
 
@@ -153,18 +272,25 @@ res.send(`<!DOCTYPE html>
 <meta name="viewport"
 content="width=device-width, initial-scale=1.0">
 
-<title>${BOT_NAME} • Control Center</title>
+<title>${BOT_NAME} • Admin Control Center</title>
+
 
 <script src="https://cdn.tailwindcss.com"></script>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+
+<link rel="preconnect"
+href="https://fonts.googleapis.com">
 
 <link rel="preconnect"
 href="https://fonts.gstatic.com"
 crossorigin>
 
+
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
 rel="stylesheet">
+
 
 <link rel="stylesheet"
 href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
@@ -177,97 +303,165 @@ box-sizing:border-box;
 }
 
 body{
+
 font-family:Inter,sans-serif;
+
 background:
-radial-gradient(circle at 10% 10%,rgba(139,92,246,.16),transparent 30%),
-radial-gradient(circle at 90% 20%,rgba(6,182,212,.12),transparent 28%),
-#05070d;
-color:#fff;
+radial-gradient(
+circle at 5% 0%,
+rgba(124,58,237,.18),
+transparent 30%
+),
+
+radial-gradient(
+circle at 100% 15%,
+rgba(6,182,212,.12),
+transparent 28%
+),
+
+#05060b;
+
+color:white;
+
 }
+
 
 .glass{
-background:rgba(15,18,30,.72);
+
+background:
+linear-gradient(
+135deg,
+rgba(18,21,35,.86),
+rgba(10,12,21,.72)
+);
+
 border:1px solid rgba(255,255,255,.07);
-backdrop-filter:blur(18px);
--webkit-backdrop-filter:blur(18px);
+
+backdrop-filter:blur(20px);
+
+-webkit-backdrop-filter:blur(20px);
+
 }
+
 
 .card{
-transition:.25s ease;
+
+transition:
+transform .25s ease,
+border .25s ease,
+box-shadow .25s ease;
+
 }
+
 
 .card:hover{
-transform:translateY(-3px);
-border-color:rgba(139,92,246,.3);
-box-shadow:0 15px 45px rgba(0,0,0,.28);
+
+transform:translateY(-4px);
+
+border-color:
+rgba(139,92,246,.35);
+
+box-shadow:
+0 20px 60px
+rgba(0,0,0,.35);
+
 }
+
 
 .gradient-text{
-background:linear-gradient(90deg,#a78bfa,#22d3ee);
+
+background:
+linear-gradient(
+90deg,
+#a78bfa,
+#22d3ee
+);
+
 -webkit-background-clip:text;
+
 color:transparent;
+
 }
 
-.glow{
-box-shadow:0 0 30px rgba(139,92,246,.18);
-}
 
-.pulse{
+.dot{
+
+width:8px;
+height:8px;
+
+border-radius:50%;
+
+background:#22c55e;
+
+box-shadow:
+0 0 0 0
+rgba(34,197,94,.6);
+
 animation:pulse 2s infinite;
+
 }
+
 
 @keyframes pulse{
 
-0%,100%{
-box-shadow:0 0 0 0 rgba(34,197,94,.35);
-}
+70%{
 
-50%{
-box-shadow:0 0 0 8px rgba(34,197,94,0);
-}
+box-shadow:
+0 0 0 8px
+rgba(34,197,94,0);
 
 }
 
-.progress{
-height:7px;
-background:#1b2030;
-border-radius:20px;
-overflow:hidden;
-}
+100%{
 
-.progress-bar{
-height:100%;
-border-radius:20px;
-background:linear-gradient(90deg,#8b5cf6,#22d3ee);
-transition:.5s;
-}
+box-shadow:
+0 0 0 0
+rgba(34,197,94,0);
 
-.fade{
-animation:fade .5s ease;
-}
-
-@keyframes fade{
-
-from{
-opacity:0;
-transform:translateY(8px);
-}
-
-to{
-opacity:1;
-transform:translateY(0);
 }
 
 }
+
+
+.chart-box{
+
+height:300px;
+
+position:relative;
+
+}
+
 
 ::-webkit-scrollbar{
-width:5px;
+
+width:6px;
+
 }
 
+
 ::-webkit-scrollbar-thumb{
-background:#292d3e;
-border-radius:10px;
+
+background:#292d3d;
+
+border-radius:20px;
+
 }
+
+
+.small-label{
+
+font-size:10px;
+
+letter-spacing:.12em;
+
+text-transform:uppercase;
+
+color:#64748b;
+
+font-weight:700;
+
+}
+
 
 </style>
 
@@ -277,57 +471,98 @@ border-radius:10px;
 <body>
 
 
-<!-- TOP NAV -->
+<!-- ======================================================
+HEADER
+====================================================== -->
 
-<header class="sticky top-0 z-50 glass border-x-0 border-t-0">
 
-<div class="max-w-[1500px] mx-auto px-5 lg:px-8 h-[76px] flex items-center justify-between">
+<header class="sticky top-0 z-50 glass border-t-0 border-x-0">
+
+<div class="max-w-[1550px] mx-auto px-5 lg:px-8">
+
+<div class="h-[78px] flex items-center justify-between">
 
 
 <div class="flex items-center gap-3">
 
-<div class="w-11 h-11 rounded-2xl flex items-center justify-center
-bg-gradient-to-br from-violet-600 to-cyan-500 shadow-lg shadow-violet-500/20">
 
-<i class="fa-solid fa-robot text-lg"></i>
+<div class="w-12 h-12 rounded-2xl
+
+bg-gradient-to-br
+from-violet-600
+to-cyan-500
+
+flex items-center
+justify-center
+
+shadow-lg
+shadow-violet-500/20">
+
+<i class="fa-solid fa-robot text-xl"></i>
 
 </div>
 
+
 <div>
 
-<h1 class="font-bold text-lg">
+<h1 class="font-extrabold text-lg">
+
 ${BOT_NAME}
+
 </h1>
 
-<p class="text-[11px] text-slate-500 tracking-widest">
-CONTROL CENTER
+<p class="text-[10px]
+text-slate-500
+tracking-[.2em]">
+
+ADMIN CONTROL CENTER
+
 </p>
 
 </div>
 
+
 </div>
 
 
 <div class="flex items-center gap-3">
 
-<div class="hidden sm:flex items-center gap-2 px-3 py-2 rounded-full
-bg-emerald-500/10 border border-emerald-500/20">
 
-<span class="w-2 h-2 bg-emerald-400 rounded-full pulse"></span>
+<div class="hidden sm:flex
+items-center gap-2
+px-4 py-2 rounded-full
 
-<span class="text-xs text-emerald-400 font-semibold">
-SYSTEM ONLINE
+bg-emerald-500/10
+border border-emerald-500/20">
+
+<span class="dot"></span>
+
+<span id="headerStatus"
+class="text-xs
+font-bold
+text-emerald-400">
+
+ONLINE
+
 </span>
 
 </div>
 
 
 <button onclick="loadStats()"
-class="w-10 h-10 rounded-xl glass hover:bg-white/10 transition">
 
-<i class="fa-solid fa-rotate-right text-slate-300"></i>
+class="w-10 h-10
+rounded-xl glass
+hover:bg-white/10
+transition">
+
+<i class="fa-solid fa-rotate-right
+text-slate-300"></i>
 
 </button>
+
+
+</div>
 
 </div>
 
@@ -337,85 +572,137 @@ class="w-10 h-10 rounded-xl glass hover:bg-white/10 transition">
 
 
 
-<!-- MAIN -->
+<!-- ======================================================
+MAIN
+====================================================== -->
 
-<main class="max-w-[1500px] mx-auto px-5 lg:px-8 py-8">
+
+<main class="max-w-[1550px] mx-auto px-5 lg:px-8 py-8">
 
 
 <!-- HERO -->
 
-<section class="glass rounded-3xl p-6 lg:p-8 mb-7 overflow-hidden relative glow">
 
-<div class="absolute -right-20 -top-20 w-64 h-64
-bg-violet-600/10 rounded-full blur-3xl"></div>
-
-<div class="absolute right-20 bottom-0 w-40 h-40
-bg-cyan-500/10 rounded-full blur-3xl"></div>
+<section class="glass rounded-[28px]
+p-6 lg:p-8 mb-6
+relative overflow-hidden">
 
 
-<div class="relative flex flex-col lg:flex-row
-lg:items-center justify-between gap-6">
+<div class="absolute
+-w-20 -top-24
+w-72 h-72
+bg-violet-600/10
+rounded-full
+blur-3xl">
+</div>
+
+
+<div class="relative
+flex flex-col
+lg:flex-row
+lg:items-center
+justify-between gap-7">
 
 
 <div>
 
-<div class="flex items-center gap-2 mb-3">
 
-<span class="px-2.5 py-1 rounded-full text-[10px]
-font-bold bg-violet-500/10 text-violet-300
-border border-violet-500/20">
+<div class="flex items-center
+gap-2 mb-4">
+
+<span class="px-3 py-1
+rounded-full
+
+bg-violet-500/10
+border border-violet-500/20
+
+text-violet-300
+text-[10px]
+font-bold">
 
 ${BOT_VERSION}
 
 </span>
 
-<span class="text-xs text-slate-500">
-Bot Management System
+<span class="text-xs
+text-slate-500">
+
+Live Bot Monitoring
+
 </span>
 
 </div>
 
 
-<h2 class="text-3xl lg:text-5xl font-extrabold tracking-tight">
+<h2 class="text-3xl
+lg:text-5xl
+font-extrabold
+tracking-tight">
 
-Welcome to
+${BOT_NAME}
 
 <span class="gradient-text">
-${BOT_NAME}
+
+Control Center
+
 </span>
 
 </h2>
 
 
-<p class="text-slate-400 mt-3 max-w-xl text-sm leading-6">
+<p class="text-slate-400
+text-sm mt-3
+max-w-2xl leading-6">
 
-Monitor your bot performance, server resources,
-sessions and system health from one beautiful
-control center.
+Real-time monitoring for bot
+connections, groups, users,
+speed and server resources.
 
 </p>
 
 </div>
 
 
-<div class="flex items-center gap-3">
+<div class="glass rounded-2xl
+px-5 py-4
+min-w-[220px]">
 
-<div class="w-12 h-12 rounded-2xl bg-emerald-500/10
-border border-emerald-500/20 flex items-center justify-center">
 
-<i class="fa-solid fa-signal text-emerald-400"></i>
+<p class="small-label">
+Bot connection
+</p>
 
-</div>
+
+<div class="flex
+items-center gap-3 mt-2">
+
+
+<span id="heroDot"
+class="dot">
+</span>
+
 
 <div>
 
-<p class="text-xs text-slate-500">
-CURRENT STATUS
+<p id="heroStatus"
+class="font-bold
+text-emerald-400">
+
+ONLINE
+
 </p>
 
-<p class="text-emerald-400 font-bold">
-Operational
+
+<p id="lastSeen"
+class="text-[11px]
+text-slate-500">
+
+Waiting for bot...
+
 </p>
+
+</div>
+
 
 </div>
 
@@ -428,52 +715,67 @@ Operational
 
 
 
-<!-- STATS -->
+<!-- ======================================================
+TOP STAT CARDS
+====================================================== -->
 
-<section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-7">
+
+<section class="grid
+grid-cols-1
+sm:grid-cols-2
+xl:grid-cols-4
+gap-5 mb-6">
 
 
 <!-- BOT -->
 
-<div class="glass card rounded-3xl p-5">
+<div class="glass card rounded-[25px] p-5">
 
-<div class="flex justify-between items-start">
+<div class="flex
+justify-between">
+
 
 <div>
 
-<p class="text-xs text-slate-500 font-medium">
-BOT STATUS
+<p class="small-label">
+Bot status
 </p>
 
+
 <h3 id="botStatus"
-class="text-2xl font-extrabold mt-2 text-emerald-400">
+class="text-3xl
+font-extrabold
+mt-2
+text-emerald-400">
 
 ONLINE
 
 </h3>
 
-<p class="text-xs text-slate-500 mt-2">
-${BOT_NAME} is running
+
+<p id="botNumber"
+class="text-xs
+text-slate-500 mt-2">
+
+Not connected
+
 </p>
 
 </div>
 
 
-<div class="w-12 h-12 rounded-2xl
-bg-emerald-500/10 text-emerald-400
-flex items-center justify-center">
+<div class="w-12 h-12
+rounded-2xl
 
-<i class="fa-solid fa-robot text-lg"></i>
+bg-emerald-500/10
+text-emerald-400
+
+flex items-center
+justify-center">
+
+<i class="fa-solid fa-robot"></i>
 
 </div>
-
-</div>
-
-<div class="mt-5 flex items-center gap-2 text-xs text-emerald-400">
-
-<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-
-Connected & Stable
 
 </div>
 
@@ -483,48 +785,108 @@ Connected & Stable
 
 <!-- SPEED -->
 
-<div class="glass card rounded-3xl p-5">
+<div class="glass card rounded-[25px] p-5">
 
-<div class="flex justify-between items-start">
+<div class="flex
+justify-between">
+
 
 <div>
 
-<p class="text-xs text-slate-500 font-medium">
-BOT SPEED
+<p class="small-label">
+Bot speed
 </p>
 
-<h3 class="text-2xl font-extrabold mt-2">
 
-<span id="speed">--</span>
+<h3 class="text-3xl
+font-extrabold mt-2">
 
-<span class="text-sm text-slate-500">
+<span id="speed">
+0
+</span>
+
+<span class="text-sm
+text-slate-500">
 ms
 </span>
 
 </h3>
 
-<p class="text-xs text-slate-500 mt-2">
-API response latency
+
+<p class="text-xs
+text-slate-500 mt-2">
+
+Live API latency
+
 </p>
 
 </div>
 
 
-<div class="w-12 h-12 rounded-2xl
-bg-cyan-500/10 text-cyan-400
-flex items-center justify-center">
+<div class="w-12 h-12
+rounded-2xl
 
-<i class="fa-solid fa-bolt text-lg"></i>
+bg-cyan-500/10
+text-cyan-400
+
+flex items-center
+justify-center">
+
+<i class="fa-solid fa-bolt"></i>
 
 </div>
 
 </div>
 
-<div class="mt-5 progress">
+</div>
 
-<div id="speedBar"
-class="progress-bar"
-style="width:92%">
+
+
+<!-- GROUPS -->
+
+<div class="glass card rounded-[25px] p-5">
+
+<div class="flex
+justify-between">
+
+
+<div>
+
+<p class="small-label">
+Bot groups
+</p>
+
+
+<h3 id="groups"
+class="text-3xl
+font-extrabold mt-2">
+
+0
+
+</h3>
+
+
+<p class="text-xs
+text-slate-500 mt-2">
+
+Active groups
+
+</p>
+
+</div>
+
+
+<div class="w-12 h-12
+rounded-2xl
+
+bg-violet-500/10
+text-violet-400
+
+flex items-center
+justify-center">
+
+<i class="fa-solid fa-users"></i>
+
 </div>
 
 </div>
@@ -535,48 +897,55 @@ style="width:92%">
 
 <!-- RAM -->
 
-<div class="glass card rounded-3xl p-5">
+<div class="glass card rounded-[25px] p-5">
 
-<div class="flex justify-between items-start">
+<div class="flex
+justify-between">
+
 
 <div>
 
-<p class="text-xs text-slate-500 font-medium">
-RAM USAGE
+<p class="small-label">
+RAM usage
 </p>
 
-<h3 class="text-2xl font-extrabold mt-2">
 
-<span id="ram">--</span>
+<h3 class="text-3xl
+font-extrabold mt-2">
 
-<span class="text-sm text-slate-500">
+<span id="ram">
+0
+</span>
+
+<span class="text-sm
+text-slate-500">
 MB
 </span>
 
 </h3>
 
-<p class="text-xs text-slate-500 mt-2">
-Process memory usage
+
+<p class="text-xs
+text-slate-500 mt-2">
+
+Server process
+
 </p>
 
 </div>
 
 
-<div class="w-12 h-12 rounded-2xl
-bg-amber-500/10 text-amber-400
-flex items-center justify-center">
+<div class="w-12 h-12
+rounded-2xl
 
-<i class="fa-solid fa-memory text-lg"></i>
+bg-amber-500/10
+text-amber-400
 
-</div>
+flex items-center
+justify-center">
 
-</div>
+<i class="fa-solid fa-memory"></i>
 
-<div class="mt-5 progress">
-
-<div id="ramBar"
-class="progress-bar"
-style="width:18%">
 </div>
 
 </div>
@@ -584,242 +953,264 @@ style="width:18%">
 </div>
 
 
+</section>
 
-<!-- CPU -->
 
-<div class="glass card rounded-3xl p-5">
 
-<div class="flex justify-between items-start">
+<!-- ======================================================
+CHARTS
+====================================================== -->
+
+
+<section class="grid
+grid-cols-1
+xl:grid-cols-2
+gap-5 mb-6">
+
+
+<!-- SPEED CHART -->
+
+
+<div class="glass rounded-[25px] p-6">
+
+
+<div class="flex
+items-center
+justify-between mb-5">
+
 
 <div>
 
-<p class="text-xs text-slate-500 font-medium">
-CPU USAGE
+<p class="small-label">
+Performance
 </p>
 
-<h3 class="text-2xl font-extrabold mt-2">
+<h3 class="font-bold text-lg mt-1">
 
-<span id="cpu">--</span>
+Bot Speed
 
-<span class="text-sm text-slate-500">
-%
+</h3>
+
+<p class="text-xs
+text-slate-500 mt-1">
+
+Live latency history
+
+</p>
+
+</div>
+
+
+<div class="w-10 h-10
+rounded-xl
+
+bg-cyan-500/10
+text-cyan-400
+
+flex items-center
+justify-center">
+
+<i class="fa-solid fa-chart-line"></i>
+
+</div>
+
+
+</div>
+
+
+<div class="chart-box">
+
+<canvas id="speedChart"></canvas>
+
+</div>
+
+
+</div>
+
+
+
+<!-- RESOURCE CHART -->
+
+
+<div class="glass rounded-[25px] p-6">
+
+
+<div class="flex
+items-center
+justify-between mb-5">
+
+
+<div>
+
+<p class="small-label">
+Server resources
+</p>
+
+<h3 class="font-bold text-lg mt-1">
+
+RAM & CPU
+
+</h3>
+
+<p class="text-xs
+text-slate-500 mt-1">
+
+Live resource usage
+
+</p>
+
+</div>
+
+
+<div class="w-10 h-10
+rounded-xl
+
+bg-violet-500/10
+text-violet-400
+
+flex items-center
+justify-center">
+
+<i class="fa-solid fa-chart-area"></i>
+
+</div>
+
+
+</div>
+
+
+<div class="chart-box">
+
+<canvas id="resourceChart"></canvas>
+
+</div>
+
+
+</div>
+
+
+</section>
+
+
+
+<!-- ======================================================
+BOT ANALYTICS
+====================================================== -->
+
+
+<section class="grid
+grid-cols-1
+xl:grid-cols-3
+gap-5 mb-6">
+
+
+<!-- USERS/GROUPS -->
+
+
+<div class="xl:col-span-2
+glass rounded-[25px] p-6">
+
+
+<div class="flex
+justify-between mb-6">
+
+
+<div>
+
+<p class="small-label">
+Bot analytics
+</p>
+
+<h3 class="font-bold text-lg mt-1">
+
+Users & Groups
+
+</h3>
+
+</div>
+
+
+<div class="flex gap-5 text-xs">
+
+
+<div class="flex items-center gap-2">
+
+<span class="w-2 h-2
+rounded-full bg-violet-400">
 </span>
 
-</h3>
-
-<p class="text-xs text-slate-500 mt-2">
-Server processor load
-</p>
-
-</div>
-
-
-<div class="w-12 h-12 rounded-2xl
-bg-fuchsia-500/10 text-fuchsia-400
-flex items-center justify-center">
-
-<i class="fa-solid fa-microchip text-lg"></i>
-
-</div>
-
-</div>
-
-<div class="mt-5 progress">
-
-<div id="cpuBar"
-class="progress-bar"
-style="width:10%">
-</div>
-
-</div>
-
-</div>
-
-
-</section>
-
-
-
-<!-- SECOND ROW -->
-
-<section class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-7">
-
-
-<!-- BOT DETAILS -->
-
-<div class="lg:col-span-2 glass rounded-3xl p-6">
-
-
-<div class="flex justify-between items-center mb-6">
-
-<div>
-
-<h3 class="font-bold text-lg">
-Bot Overview
-</h3>
-
-<p class="text-xs text-slate-500 mt-1">
-Live information from your server
-</p>
-
-</div>
-
-<div class="text-xs text-slate-500">
-LIVE
-</div>
-
-</div>
-
-
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-
-
-<div class="bg-white/[.025] border border-white/[.05]
-rounded-2xl p-4">
-
-<div class="text-violet-400 mb-3">
-<i class="fa-solid fa-users"></i>
-</div>
-
-<p class="text-2xl font-bold" id="sessions">
-0
-</p>
-
-<p class="text-xs text-slate-500 mt-1">
-Sessions
-</p>
-
-</div>
-
-
-<div class="bg-white/[.025] border border-white/[.05]
-rounded-2xl p-4">
-
-<div class="text-cyan-400 mb-3">
-<i class="fa-solid fa-layer-group"></i>
-</div>
-
-<p class="text-2xl font-bold" id="groups">
-0
-</p>
-
-<p class="text-xs text-slate-500 mt-1">
 Groups
-</p>
 
 </div>
 
 
-<div class="bg-white/[.025] border border-white/[.05]
-rounded-2xl p-4">
+<div class="flex items-center gap-2">
 
-<div class="text-pink-400 mb-3">
-<i class="fa-solid fa-user-group"></i>
-</div>
+<span class="w-2 h-2
+rounded-full bg-cyan-400">
+</span>
 
-<p class="text-2xl font-bold" id="users">
-0
-</p>
-
-<p class="text-xs text-slate-500 mt-1">
 Users
-</p>
-
-</div>
-
-
-<div class="bg-white/[.025] border border-white/[.05]
-rounded-2xl p-4">
-
-<div class="text-amber-400 mb-3">
-<i class="fa-solid fa-triangle-exclamation"></i>
-</div>
-
-<p class="text-2xl font-bold" id="errors">
-0
-</p>
-
-<p class="text-xs text-slate-500 mt-1">
-Errors
-</p>
 
 </div>
 
 
 </div>
 
-</div>
-
-
-
-<!-- UPTIME -->
-
-<div class="glass rounded-3xl p-6">
-
-<div class="w-12 h-12 rounded-2xl
-bg-violet-500/10 text-violet-400
-flex items-center justify-center mb-5">
-
-<i class="fa-solid fa-clock"></i>
-
-</div>
-
-<p class="text-xs text-slate-500">
-SERVER UPTIME
-</p>
-
-<h3 id="uptime"
-class="text-2xl font-bold mt-2">
-
---
-
-</h3>
-
-<div class="mt-5 flex items-center gap-2 text-xs text-emerald-400">
-
-<i class="fa-solid fa-circle-check"></i>
-
-System running normally
-
-</div>
 
 </div>
 
 
-</section>
+<div class="chart-box">
+
+<canvas id="analyticsChart"></canvas>
+
+</div>
+
+
+</div>
 
 
 
-<!-- SYSTEM -->
-
-<section class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+<!-- SYSTEM INFO -->
 
 
-<!-- SERVER -->
+<div class="glass rounded-[25px] p-6">
 
-<div class="glass rounded-3xl p-6">
 
-<div class="flex items-center gap-3 mb-6">
+<div class="flex items-center
+gap-3 mb-5">
 
-<div class="w-11 h-11 rounded-2xl
-bg-blue-500/10 text-blue-400
-flex items-center justify-center">
+
+<div class="w-11 h-11
+rounded-xl
+
+bg-blue-500/10
+text-blue-400
+
+flex items-center
+justify-center">
 
 <i class="fa-solid fa-server"></i>
 
 </div>
 
+
 <div>
 
 <h3 class="font-bold">
-Server Information
+System
 </h3>
 
-<p class="text-xs text-slate-500">
-Environment details
+<p class="text-xs
+text-slate-500">
+
+Runtime information
+
 </p>
 
 </div>
+
 
 </div>
 
@@ -827,185 +1218,106 @@ Environment details
 <div class="space-y-1">
 
 
-<div class="flex justify-between items-center
-py-4 border-b border-white/[.05]">
+<div class="flex justify-between
+py-4
+border-b border-white/[.05]">
 
-<span class="text-sm text-slate-400">
+<span class="text-xs
+text-slate-500">
+
+CPU
+
+</span>
+
+<span id="cpu"
+class="text-sm font-bold">
+
+0%
+
+</span>
+
+</div>
+
+
+<div class="flex justify-between
+py-4
+border-b border-white/[.05]">
+
+<span class="text-xs
+text-slate-500">
+
+Uptime
+
+</span>
+
+<span id="uptime"
+class="text-sm font-bold">
+
+--
+
+</span>
+
+</div>
+
+
+<div class="flex justify-between
+py-4
+border-b border-white/[.05]">
+
+<span class="text-xs
+text-slate-500">
+
 Node.js
+
 </span>
 
 <span id="node"
-class="text-sm font-semibold">
+class="text-sm font-bold">
+
 --
+
 </span>
 
 </div>
 
 
-<div class="flex justify-between items-center
-py-4 border-b border-white/[.05]">
+<div class="flex justify-between
+py-4
+border-b border-white/[.05]">
 
-<span class="text-sm text-slate-400">
+<span class="text-xs
+text-slate-500">
+
 Platform
+
 </span>
 
 <span id="platform"
-class="text-sm font-semibold">
+class="text-sm font-bold">
+
 --
+
 </span>
 
 </div>
 
 
-<div class="flex justify-between items-center
-py-4 border-b border-white/[.05]">
+<div class="flex justify-between
+py-4">
 
-<span class="text-sm text-slate-400">
+<span class="text-xs
+text-slate-500">
+
 Architecture
+
 </span>
 
 <span id="arch"
-class="text-sm font-semibold">
+class="text-sm font-bold">
+
 --
+
 </span>
-
-</div>
-
-
-<div class="flex justify-between items-center
-py-4">
-
-<span class="text-sm text-slate-400">
-Total RAM
-</span>
-
-<span id="totalRam"
-class="text-sm font-semibold">
---
-</span>
-
-</div>
-
-
-</div>
-
-</div>
-
-
-
-<!-- ACTIVITY -->
-
-<div class="glass rounded-3xl p-6">
-
-<div class="flex items-center justify-between mb-6">
-
-<div class="flex items-center gap-3">
-
-<div class="w-11 h-11 rounded-2xl
-bg-cyan-500/10 text-cyan-400
-flex items-center justify-center">
-
-<i class="fa-solid fa-wave-square"></i>
-
-</div>
-
-<div>
-
-<h3 class="font-bold">
-System Activity
-</h3>
-
-<p class="text-xs text-slate-500">
-Live monitoring
-</p>
-
-</div>
-
-</div>
-
-<span class="text-[10px] px-2 py-1 rounded-full
-bg-emerald-500/10 text-emerald-400">
-LIVE
-</span>
-
-</div>
-
-
-<div class="space-y-4">
-
-
-<div class="flex gap-3">
-
-<div class="w-8 h-8 rounded-xl
-bg-emerald-500/10 text-emerald-400
-flex items-center justify-center text-xs">
-
-<i class="fa-solid fa-check"></i>
-
-</div>
-
-<div>
-
-<p class="text-sm font-medium">
-Bot system online
-</p>
-
-<p class="text-xs text-slate-500">
-System is responding normally
-</p>
-
-</div>
-
-</div>
-
-
-<div class="flex gap-3">
-
-<div class="w-8 h-8 rounded-xl
-bg-violet-500/10 text-violet-400
-flex items-center justify-center text-xs">
-
-<i class="fa-solid fa-chart-line"></i>
-
-</div>
-
-<div>
-
-<p class="text-sm font-medium">
-Monitoring active
-</p>
-
-<p class="text-xs text-slate-500">
-Statistics update automatically
-</p>
-
-</div>
-
-</div>
-
-
-<div class="flex gap-3">
-
-<div class="w-8 h-8 rounded-xl
-bg-cyan-500/10 text-cyan-400
-flex items-center justify-center text-xs">
-
-<i class="fa-solid fa-cloud"></i>
-
-</div>
-
-<div>
-
-<p class="text-sm font-medium">
-Server connected
-</p>
-
-<p id="lastUpdate"
-class="text-xs text-slate-500">
-Waiting for update...
-</p>
-
-</div>
 
 </div>
 
@@ -1018,11 +1330,112 @@ Waiting for update...
 </section>
 
 
-<footer class="text-center py-8">
 
-<p class="text-xs text-slate-600">
+<!-- ======================================================
+BOTTOM
+====================================================== -->
 
-${BOT_NAME} • Control Center
+
+<section class="grid
+grid-cols-1
+md:grid-cols-3
+gap-5">
+
+
+<div class="glass rounded-[25px]
+p-5">
+
+
+<p class="small-label">
+Sessions
+</p>
+
+
+<h3 id="sessions"
+class="text-3xl font-extrabold mt-2">
+
+0
+
+</h3>
+
+
+<p class="text-xs text-slate-500 mt-2">
+
+Active bot sessions
+
+</p>
+
+</div>
+
+
+
+<div class="glass rounded-[25px]
+p-5">
+
+
+<p class="small-label">
+Users
+</p>
+
+
+<h3 id="users"
+class="text-3xl font-extrabold mt-2">
+
+0
+
+</h3>
+
+
+<p class="text-xs text-slate-500 mt-2">
+
+Total bot users
+
+</p>
+
+</div>
+
+
+
+<div class="glass rounded-[25px]
+p-5">
+
+
+<p class="small-label">
+Errors
+</p>
+
+
+<h3 id="errors"
+class="text-3xl
+font-extrabold
+mt-2
+text-red-400">
+
+0
+
+</h3>
+
+
+<p class="text-xs text-slate-500 mt-2">
+
+Reported system errors
+
+</p>
+
+</div>
+
+
+</section>
+
+
+
+<footer class="text-center
+py-8">
+
+<p class="text-[11px]
+text-slate-600">
+
+${BOT_NAME} • Admin Control Center
 
 </p>
 
@@ -1035,152 +1448,500 @@ ${BOT_NAME} • Control Center
 
 <script>
 
+// ============================================================
+// CHART CONFIG
+// ============================================================
+
+Chart.defaults.color = "#64748b";
+
+Chart.defaults.font.family =
+"Inter, sans-serif";
+
+
+const chartOptions = {
+
+responsive:true,
+
+maintainAspectRatio:false,
+
+interaction:{
+mode:"index",
+intersect:false
+},
+
+plugins:{
+
+legend:{
+display:false
+}
+
+},
+
+scales:{
+
+x:{
+grid:{
+color:"rgba(255,255,255,.04)"
+},
+ticks:{
+color:"#64748b",
+maxTicksLimit:8
+}
+},
+
+y:{
+beginAtZero:true,
+
+grid:{
+color:"rgba(255,255,255,.04)"
+},
+
+ticks:{
+color:"#64748b"
+}
+
+}
+
+}
+
+};
+
+
+// ============================================================
+// SPEED CHART
+// ============================================================
+
+const speedChart = new Chart(
+
+document.getElementById("speedChart"),
+
+{
+
+type:"line",
+
+data:{
+
+labels:[],
+
+datasets:[{
+
+label:"Speed",
+
+data:[],
+
+borderColor:"#22d3ee",
+
+backgroundColor:
+"rgba(34,211,238,.10)",
+
+fill:true,
+
+tension:.4,
+
+pointRadius:2,
+
+pointHoverRadius:5
+
+}]
+
+},
+
+options:chartOptions
+
+});
+
+
+// ============================================================
+// RESOURCE CHART
+// ============================================================
+
+const resourceChart = new Chart(
+
+document.getElementById("resourceChart"),
+
+{
+
+type:"line",
+
+data:{
+
+labels:[],
+
+datasets:[
+
+{
+
+label:"RAM",
+
+data:[],
+
+borderColor:"#a78bfa",
+
+backgroundColor:
+"rgba(167,139,250,.08)",
+
+fill:true,
+
+tension:.4,
+
+pointRadius:2
+
+},
+
+{
+
+label:"CPU",
+
+data:[],
+
+borderColor:"#f59e0b",
+
+backgroundColor:
+"rgba(245,158,11,.06)",
+
+fill:true,
+
+tension:.4,
+
+pointRadius:2
+
+}
+
+]
+
+},
+
+options:chartOptions
+
+});
+
+
+// ============================================================
+// ANALYTICS CHART
+// ============================================================
+
+const analyticsChart = new Chart(
+
+document.getElementById("analyticsChart"),
+
+{
+
+type:"line",
+
+data:{
+
+labels:[],
+
+datasets:[
+
+{
+
+label:"Groups",
+
+data:[],
+
+borderColor:"#a78bfa",
+
+backgroundColor:
+"rgba(167,139,250,.06)",
+
+fill:true,
+
+tension:.4,
+
+pointRadius:2
+
+},
+
+{
+
+label:"Users",
+
+data:[],
+
+borderColor:"#22d3ee",
+
+backgroundColor:
+"rgba(34,211,238,.06)",
+
+fill:true,
+
+tension:.4,
+
+pointRadius:2
+
+}
+
+]
+
+},
+
+options:chartOptions
+
+});
+
+
+// ============================================================
+// UPDATE CHARTS
+// ============================================================
+
+function updateCharts(data){
+
+const history =
+data.history || [];
+
+const labels =
+history.map(x => x.time);
+
+
+// SPEED
+
+speedChart.data.labels =
+labels;
+
+speedChart.data.datasets[0].data =
+history.map(x => x.speed);
+
+speedChart.update("none");
+
+
+// RESOURCES
+
+resourceChart.data.labels =
+labels;
+
+resourceChart.data.datasets[0].data =
+history.map(x => x.ram);
+
+resourceChart.data.datasets[1].data =
+history.map(x => x.cpu);
+
+resourceChart.update("none");
+
+
+// ANALYTICS
+
+analyticsChart.data.labels =
+labels;
+
+analyticsChart.data.datasets[0].data =
+history.map(x => x.groups);
+
+analyticsChart.data.datasets[1].data =
+history.map(x => x.users);
+
+analyticsChart.update("none");
+
+}
+
+
+// ============================================================
+// LOAD DATA
+// ============================================================
+
 async function loadStats(){
 
 try{
 
-const requestStart = performance.now();
-
-const response = await fetch("/api/stats",{
+const response =
+await fetch(
+"/api/stats",
+{
 cache:"no-store"
-});
+}
+);
 
-const data = await response.json();
 
-const latency =
-Math.round(performance.now()-requestStart);
+const data =
+await response.json();
+
+
+const bot =
+data.bot;
+
+const server =
+data.server;
 
 
 // STATUS
 
+const online =
+String(bot.status).toLowerCase()
+=== "online";
+
+
 document.getElementById("botStatus")
 .textContent =
-data.status.toUpperCase();
+online
+? "ONLINE"
+: "OFFLINE";
+
+
+document.getElementById("botStatus")
+.className =
+" text-3xl font-extrabold mt-2 "
++
+(
+online
+? "text-emerald-400"
+: "text-red-400"
+);
+
+
+document.getElementById("headerStatus")
+.textContent =
+online
+? "ONLINE"
+: "OFFLINE";
+
+
+document.getElementById("heroStatus")
+.textContent =
+online
+? "ONLINE"
+: "OFFLINE";
+
+
+document.getElementById("heroStatus")
+.className =
+"font-bold "
++
+(
+online
+? "text-emerald-400"
+: "text-red-400"
+);
+
+
+document.getElementById("botNumber")
+.textContent =
+bot.botNumber ||
+"Not connected";
 
 
 // SPEED
 
 document.getElementById("speed")
 .textContent =
-latency;
+bot.speed || 0;
 
-document.getElementById("speedBar")
-.style.width =
-Math.max(20,Math.min(100,100-latency))
-+"%";
+
+// GROUPS
+
+document.getElementById("groups")
+.textContent =
+Number(bot.groups || 0)
+.toLocaleString();
+
+
+// USERS
+
+document.getElementById("users")
+.textContent =
+Number(bot.users || 0)
+.toLocaleString();
+
+
+// SESSIONS
+
+document.getElementById("sessions")
+.textContent =
+Number(bot.sessions || 0)
+.toLocaleString();
+
+
+// ERRORS
+
+document.getElementById("errors")
+.textContent =
+Number(bot.errors || 0)
+.toLocaleString();
 
 
 // RAM
 
 document.getElementById("ram")
 .textContent =
-data.ram;
-
-const ramPercent =
-Math.min(
-100,
-(Number(data.ram)/Number(data.totalRam))*100
-);
-
-document.getElementById("ramBar")
-.style.width =
-Math.max(3,ramPercent)+"%";
+server.memory.rss;
 
 
 // CPU
 
 document.getElementById("cpu")
 .textContent =
-data.cpu;
-
-document.getElementById("cpuBar")
-.style.width =
-Math.min(100,Number(data.cpu))+"%";
-
-
-// COUNTERS
-
-document.getElementById("sessions")
-.textContent =
-data.sessions;
-
-document.getElementById("groups")
-.textContent =
-data.groups;
-
-document.getElementById("users")
-.textContent =
-data.users;
-
-document.getElementById("errors")
-.textContent =
-data.errors;
+server.cpu + "%";
 
 
 // UPTIME
 
 document.getElementById("uptime")
 .textContent =
-data.uptime;
+server.uptime;
 
 
 // SERVER
 
 document.getElementById("node")
 .textContent =
-data.node;
+server.node;
 
 document.getElementById("platform")
 .textContent =
-data.platform;
+server.platform;
 
 document.getElementById("arch")
 .textContent =
-data.arch;
+server.arch;
 
-document.getElementById("totalRam")
+
+// LAST UPDATE
+
+if(bot.lastUpdate){
+
+const date =
+new Date(bot.lastUpdate);
+
+document.getElementById("lastSeen")
 .textContent =
-data.totalRam+" MB";
+"Last update " +
+date.toLocaleTimeString();
+
+}
 
 
-// UPDATE TIME
+// CHARTS
 
-document.getElementById("lastUpdate")
-textContent =
-"Updated just now";
-
-document.getElementById("lastUpdate")
-.textContent =
-"Updated just now";
+updateCharts(data);
 
 
 }
 
 catch(error){
 
+console.error(
+"Dashboard error:",
+error
+);
+
 document.getElementById("botStatus")
 .textContent =
 "OFFLINE";
 
-document.getElementById("botStatus")
-.className =
-"text-2xl font-extrabold mt-2 text-red-400";
-
-console.error(error);
-
 }
 
 }
 
 
-// INITIAL
+// ============================================================
+// START
+// ============================================================
 
 loadStats();
 
-
-// LIVE UPDATE
-
-setInterval(loadStats,3000);
+setInterval(
+loadStats,
+3000
+);
 
 </script>
 
@@ -1192,41 +1953,75 @@ setInterval(loadStats,3000);
 });
 
 
-// ======================================================
+// ============================================================
 // ERROR MONITOR
-// ======================================================
+// ============================================================
 
-process.on("uncaughtException", error => {
+process.on(
+"uncaughtException",
+error => {
 
     errorCount++;
 
-    console.error("UNCAUGHT:", error);
+    console.error(
+        "[UNCAUGHT]",
+        error
+    );
 
 });
 
 
-process.on("unhandledRejection", error => {
+process.on(
+"unhandledRejection",
+error => {
 
     errorCount++;
 
-    console.error("REJECTION:", error);
+    console.error(
+        "[REJECTION]",
+        error
+    );
 
 });
 
 
-// ======================================================
-// START
-// ======================================================
+// ============================================================
+// START SERVER
+// ============================================================
 
-app.listen(PORT, () => {
+app.listen(
+PORT,
+() => {
 
     console.log("");
-    console.log("======================================");
-    console.log("        MIYORA MD CONTROL CENTER");
-    console.log("======================================");
-    console.log(`Server : http://localhost:${PORT}`);
-    console.log(`Admin  : http://localhost:${PORT}/admin`);
-    console.log("======================================");
+    console.log(
+        "========================================"
+    );
+
+    console.log(
+        "       MIYORA MD CONTROL CENTER"
+    );
+
+    console.log(
+        "========================================"
+    );
+
+    console.log(
+        "Server : http://localhost:" + PORT
+    );
+
+    console.log(
+        "Admin  : http://localhost:" + PORT + "/admin"
+    );
+
+    console.log(
+        "API    : http://localhost:" + PORT + "/api/stats"
+    );
+
+    console.log(
+        "========================================"
+    );
+
     console.log("");
 
 });
