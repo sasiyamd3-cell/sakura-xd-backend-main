@@ -1,221 +1,668 @@
-const express = require('express');
+const express = require("express");
+const os = require("os");
+
 const app = express();
-const bodyParser = require("body-parser");
-
 const PORT = process.env.PORT || 8000;
-__path = process.cwd();
 
-// Sakura හෝ Bot ට අදාළ මොඩියුලය (මෙය නැත්නම් යම් ඩිෆෝල්ට් අගයන් පෙන්වීමට කෝඩ් එක සකසා ඇත)
-let code;
-try {
-    code = require('./sakura');
-} catch (e) {
-    code = null;
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+require("events").EventEmitter.defaultMaxListeners = 500;
+
+// ===============================
+// BOT / SERVER DATA
+// ===============================
+
+const startTime = Date.now();
+let errorsCount = 0;
+
+function getUptime() {
+    const seconds = Math.floor(process.uptime());
+
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    return `${days}d ${hours}h ${minutes}m ${secs}s`;
 }
 
-require('events').EventEmitter.defaultMaxListeners = 500;
+function getMemory() {
+    const memory = process.memoryUsage();
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.set('json spaces', 2);
-
-// --- 1. BOT API ROUTE (/code) ---
-if (code) {
-    app.use('/code', code);
+    return {
+        used: (memory.rss / 1024 / 1024).toFixed(2),
+        heap: (memory.heapUsed / 1024 / 1024).toFixed(2),
+        total: (os.totalmem() / 1024 / 1024).toFixed(2)
+    };
 }
 
-// --- 2. HOME API ROUTE (/) ---
-app.get('/', (req, res) => {
-    let info = { sessionsOnline: 0, botName: 'Sakura Bot', numbers: [], timestamp: new Date().toISOString() };
-    try {
-        if (code && typeof code.getActiveInfo === 'function') {
-            info = code.getActiveInfo();
-        }
-    } catch (e) {}
+function getCPU() {
+    const cpus = os.cpus();
 
-    res.status(200).json({
-        status: 'online',
-        name: info.botName,
-        about: `${info.botName} is up and running.`,
-        sessions_online: info.sessionsOnline,
-        server_time: info.timestamp
+    let idle = 0;
+    let total = 0;
+
+    cpus.forEach(cpu => {
+        idle += cpu.times.idle;
+
+        total +=
+            cpu.times.user +
+            cpu.times.nice +
+            cpu.times.sys +
+            cpu.times.idle +
+            cpu.times.irq;
+    });
+
+    if (!total) return "0%";
+
+    return `${Math.max(0, Math.min(100, 100 - (idle / total * 100))).toFixed(1)}%`;
+}
+
+// ===============================
+// HOME
+// ===============================
+
+app.get("/", (req, res) => {
+    res.json({
+        status: "online",
+        bot: "MIYORA MD",
+        server: "running",
+        uptime: getUptime(),
+        memory: `${getMemory().used} MB`,
+        time: new Date().toISOString()
     });
 });
 
-// --- 3. MODERN ADMIN PANEL ROUTE (/admin) ---
-// බොට්ගේ Speed, Active Sessions, Errors සහ අනෙකුත් විස්තර පෙන්වන UI එක එකම ෆයිල් එක තුළ ක්‍රියාත්මක වේ.
-app.get('/admin', (req, res) => {
-    // බොට්ගේ දත්ත ලබාගැනීම (సෙෂන් සහ වෙනත් තොරතුරු)
-    let info = { sessionsOnline: 0, botName: 'Sakura Bot' };
-    try {
-        if (code && typeof code.getActiveInfo === 'function') {
-            info = code.getActiveInfo();
-        }
-    } catch (e) {}
+// ===============================
+// API - LIVE STATS
+// ===============================
 
-    let memoryUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
-    let uptimeSeconds = process.uptime();
-    let hours = Math.floor(uptimeSeconds / 3600);
-    let minutes = Math.floor((uptimeSeconds % 3600) / 60);
+app.get("/api/stats", (req, res) => {
 
-    let stats = {
-        botName: info.botName || 'Sakura Bot',
-        sessionsCount: info.sessionsOnline || 0,
-        speed: '38ms',     // Bot Latency / Response Speed
-        errorsCount: 0,    // Recent Errors Count
-        memory: `${memoryUsage} MB`,
-        uptime: `${hours}h ${minutes}m`,
-        cpuUsage: '12.5%'
-    };
+    const memory = getMemory();
 
-    res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${stats.botName} - Admin Dashboard</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    </head>
-    <body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-indigo-500 selection:text-white">
-        <div class="flex h-screen overflow-hidden">
-            <!-- Sidebar -->
-            <aside class="w-64 bg-slate-900 border-r border-slate-800 hidden md:flex flex-col justify-between">
-                <div class="p-6">
-                    <div class="flex items-center space-x-3 mb-8">
-                        <div class="bg-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-indigo-500/30">
-                            <i class="fa-solid fa-robot text-xl"></i>
-                        </div>
-                        <span class="text-lg font-bold tracking-wide text-white">${stats.botName}</span>
-                    </div>
-                    <nav class="space-y-2">
-                        <a href="#" class="flex items-center space-x-3 px-4 py-3 rounded-xl bg-indigo-600 text-white font-medium shadow-lg shadow-indigo-600/25 transition">
-                            <i class="fa-solid fa-chart-pie"></i><span>Dashboard</span>
-                        </a>
-                        <a href="#" class="flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
-                            <i class="fa-solid fa-users"></i><span>Sessions</span>
-                        </a>
-                        <a href="#" class="flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition">
-                            <i class="fa-solid fa-triangle-exclamation"></i><span>Errors Log</span>
-                        </a>
-                    </nav>
-                </div>
-                <div class="p-6 border-t border-slate-800 text-xs text-slate-500">
-                    <p>Status: <span class="text-emerald-400 font-semibold">● Live</span></p>
-                </div>
-            </aside>
+    res.json({
+        status: "online",
+        botName: "MIYORA MD",
 
-            <!-- Main Content -->
-            <main class="flex-1 flex flex-col h-full overflow-y-auto">
-                <header class="h-20 bg-slate-900/50 backdrop-blur border-b border-slate-800 px-8 flex items-center justify-between sticky top-0 z-10">
-                    <h1 class="text-xl font-bold text-white">System Control Panel</h1>
-                    <button onclick="location.reload()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-xl text-sm font-medium transition flex items-center space-x-2 border border-slate-700">
-                        <i class="fa-solid fa-rotate-right"></i><span>Refresh</span>
-                    </button>
-                </header>
+        sessions: 0,
+        groups: 0,
+        users: 0,
 
-                <div class="p-8 max-w-7xl w-full mx-auto space-y-8">
-                    <!-- Metric Cards -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <!-- Active Sessions -->
-                        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-slate-400">Active Sessions</p>
-                                    <h3 class="text-3xl font-extrabold text-white mt-2">${stats.sessionsCount}</h3>
-                                </div>
-                                <div class="bg-blue-500/10 text-blue-400 p-3 rounded-xl">
-                                    <i class="fa-solid fa-users-viewfinder text-xl"></i>
-                                </div>
-                            </div>
-                        </div>
+        speed: "Online",
 
-                        <!-- Bot Speed / Latency -->
-                        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-slate-400">Bot Speed (Latency)</p>
-                                    <h3 class="text-3xl font-extrabold text-emerald-400 mt-2">${stats.speed}</h3>
-                                </div>
-                                <div class="bg-emerald-500/10 text-emerald-400 p-3 rounded-xl">
-                                    <i class="fa-solid fa-gauge-high text-xl"></i>
-                                </div>
-                            </div>
-                        </div>
+        errors: errorsCount,
 
-                        <!-- System Errors -->
-                        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-slate-400">Errors Count</p>
-                                    <h3 class="text-3xl font-extrabold text-rose-400 mt-2">${stats.errorsCount}</h3>
-                                </div>
-                                <div class="bg-rose-500/10 text-rose-400 p-3 rounded-xl">
-                                    <i class="fa-solid fa-bug text-xl"></i>
-                                </div>
-                            </div>
-                        </div>
+        memory: memory.used,
+        heap: memory.heap,
+        totalMemory: memory.total,
 
-                        <!-- RAM Usage -->
-                        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-slate-400">Memory RAM</p>
-                                    <h3 class="text-3xl font-extrabold text-amber-400 mt-2">${stats.memory}</h3>
-                                </div>
-                                <div class="bg-amber-500/10 text-amber-400 p-3 rounded-xl">
-                                    <i class="fa-solid fa-microchip text-xl"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        cpu: getCPU(),
 
-                    <!-- Diagnostics & Actions -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-                            <h3 class="text-lg font-bold text-white mb-4">Bot Diagnostics</h3>
-                            <div class="space-y-4">
-                                <div class="flex justify-between items-center py-3 border-b border-slate-800 text-sm">
-                                    <span class="text-slate-400">Uptime</span>
-                                    <span class="font-semibold text-white">${stats.uptime}</span>
-                                </div>
-                                <div class="flex justify-between items-center py-3 border-b border-slate-800 text-sm">
-                                    <span class="text-slate-400">CPU Usage</span>
-                                    <span class="font-semibold text-white">${stats.cpuUsage}</span>
-                                </div>
-                                <div class="flex justify-between items-center py-3 text-sm">
-                                    <span class="text-slate-400">Core Status</span>
-                                    <span class="px-3 py-1 bg-emerald-500/10 text-emerald-400 rounded-full text-xs font-semibold">Active & Stable</span>
-                                </div>
-                            </div>
-                        </div>
+        uptime: getUptime(),
 
-                        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex flex-col justify-between">
-                            <div>
-                                <h3 class="text-lg font-bold text-white mb-2">Quick Commands</h3>
-                                <p class="text-sm text-slate-400 mb-6">Perform administrative tasks for your bot instance instantly.</p>
-                            </div>
-                            <div class="flex space-x-4">
-                                <button onclick="alert('Bot restart signal sent!')" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl font-medium transition text-center shadow-lg shadow-indigo-600/20">Restart Bot</button>
-                                <button onclick="alert('System cache cleared successfully!')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 rounded-xl font-medium transition border border-slate-700 text-center">Clear Cache</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </main>
-        </div>
-    </body>
-    </html>
-    `);
+        platform: os.platform(),
+        arch: os.arch(),
+        node: process.version,
+
+        serverTime: new Date().toISOString()
+    });
 });
 
-// --- 4. SERVER LISTENER ---
+// ===============================
+// ADMIN PANEL
+// ===============================
+
+app.get("/admin", (req, res) => {
+
+res.send(`
+
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>MIYORA MD - Admin</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="stylesheet"
+href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+</head>
+
+
+<body class="bg-slate-950 text-white">
+
+
+<div class="min-h-screen">
+
+
+<!-- HEADER -->
+
+<header class="border-b border-slate-800 bg-slate-900">
+
+<div class="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
+
+<div>
+
+<h1 class="text-2xl font-bold">
+♡ MIYORA MD
+</h1>
+
+<p class="text-sm text-slate-400">
+Bot Control Dashboard
+</p>
+
+</div>
+
+
+<div class="flex items-center gap-2">
+
+<span class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+
+<span class="text-green-400">
+LIVE
+</span>
+
+</div>
+
+</div>
+
+</header>
+
+
+
+<!-- CONTENT -->
+
+<main class="max-w-7xl mx-auto px-6 py-8">
+
+
+<!-- CARDS -->
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+
+
+<!-- STATUS -->
+
+<div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+<div class="flex justify-between">
+
+<div>
+
+<p class="text-slate-400 text-sm">
+Bot Status
+</p>
+
+<h2 id="status"
+class="text-3xl font-bold text-green-400 mt-2">
+ONLINE
+</h2>
+
+</div>
+
+<div class="bg-green-500/10 text-green-400 p-4 rounded-xl">
+
+<i class="fa-solid fa-robot text-xl"></i>
+
+</div>
+
+</div>
+
+</div>
+
+
+
+<!-- SPEED -->
+
+<div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+<div class="flex justify-between">
+
+<div>
+
+<p class="text-slate-400 text-sm">
+Bot Speed
+</p>
+
+<h2 id="speed"
+class="text-3xl font-bold text-cyan-400 mt-2">
+--
+</h2>
+
+</div>
+
+<div class="bg-cyan-500/10 text-cyan-400 p-4 rounded-xl">
+
+<i class="fa-solid fa-bolt text-xl"></i>
+
+</div>
+
+</div>
+
+</div>
+
+
+
+<!-- MEMORY -->
+
+<div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+<div class="flex justify-between">
+
+<div>
+
+<p class="text-slate-400 text-sm">
+RAM Usage
+</p>
+
+<h2 id="memory"
+class="text-3xl font-bold text-yellow-400 mt-2">
+--
+</h2>
+
+</div>
+
+<div class="bg-yellow-500/10 text-yellow-400 p-4 rounded-xl">
+
+<i class="fa-solid fa-memory text-xl"></i>
+
+</div>
+
+</div>
+
+</div>
+
+
+
+<!-- ERRORS -->
+
+<div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+<div class="flex justify-between">
+
+<div>
+
+<p class="text-slate-400 text-sm">
+Errors
+</p>
+
+<h2 id="errors"
+class="text-3xl font-bold text-red-400 mt-2">
+0
+</h2>
+
+</div>
+
+<div class="bg-red-500/10 text-red-400 p-4 rounded-xl">
+
+<i class="fa-solid fa-bug text-xl"></i>
+
+</div>
+
+</div>
+
+</div>
+
+
+</div>
+
+
+
+<!-- BOT INFO -->
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-6">
+
+
+<div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+<h2 class="text-xl font-bold mb-5">
+Bot Information
+</h2>
+
+
+<div class="space-y-4">
+
+
+<div class="flex justify-between border-b border-slate-800 pb-3">
+
+<span class="text-slate-400">
+Bot Name
+</span>
+
+<span id="botName">
+MIYORA MD
+</span>
+
+</div>
+
+
+<div class="flex justify-between border-b border-slate-800 pb-3">
+
+<span class="text-slate-400">
+Groups
+</span>
+
+<span id="groups">
+0
+</span>
+
+</div>
+
+
+<div class="flex justify-between border-b border-slate-800 pb-3">
+
+<span class="text-slate-400">
+Sessions
+</span>
+
+<span id="sessions">
+0
+</span>
+
+</div>
+
+
+<div class="flex justify-between border-b border-slate-800 pb-3">
+
+<span class="text-slate-400">
+Users
+</span>
+
+<span id="users">
+0
+</span>
+
+</div>
+
+
+<div class="flex justify-between">
+
+<span class="text-slate-400">
+Uptime
+</span>
+
+<span id="uptime">
+--
+</span>
+
+</div>
+
+
+</div>
+
+</div>
+
+
+
+<!-- SERVER -->
+
+<div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+<h2 class="text-xl font-bold mb-5">
+Server Information
+</h2>
+
+
+<div class="space-y-4">
+
+
+<div class="flex justify-between border-b border-slate-800 pb-3">
+
+<span class="text-slate-400">
+CPU
+</span>
+
+<span id="cpu">
+--
+</span>
+
+</div>
+
+
+<div class="flex justify-between border-b border-slate-800 pb-3">
+
+<span class="text-slate-400">
+Heap
+</span>
+
+<span id="heap">
+--
+</span>
+
+</div>
+
+
+<div class="flex justify-between border-b border-slate-800 pb-3">
+
+<span class="text-slate-400">
+Node.js
+</span>
+
+<span id="node">
+--
+</span>
+
+</div>
+
+
+<div class="flex justify-between">
+
+<span class="text-slate-400">
+Platform
+</span>
+
+<span id="platform">
+--
+</span>
+
+</div>
+
+
+</div>
+
+</div>
+
+
+</div>
+
+
+
+<!-- REFRESH -->
+
+<div class="mt-6 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+<div class="flex flex-col sm:flex-row justify-between gap-4 items-center">
+
+<div>
+
+<h2 class="font-bold text-lg">
+Live Monitoring
+</h2>
+
+<p class="text-sm text-slate-400">
+Dashboard automatically updates every 3 seconds.
+</p>
+
+</div>
+
+
+<button onclick="loadStats()"
+class="bg-indigo-600 hover:bg-indigo-500 px-6 py-3 rounded-xl font-semibold">
+
+<i class="fa-solid fa-rotate mr-2"></i>
+
+Refresh Now
+
+</button>
+
+
+</div>
+
+</div>
+
+
+</main>
+
+
+</div>
+
+
+
+<script>
+
+async function loadStats() {
+
+try {
+
+const start = Date.now();
+
+const response = await fetch("/api/stats");
+
+const data = await response.json();
+
+const latency = Date.now() - start;
+
+
+// STATUS
+
+document.getElementById("status").textContent =
+data.status.toUpperCase();
+
+
+// SPEED
+
+document.getElementById("speed").textContent =
+latency + "ms";
+
+
+// MEMORY
+
+document.getElementById("memory").textContent =
+data.memory + " MB";
+
+
+// ERRORS
+
+document.getElementById("errors").textContent =
+data.errors;
+
+
+// BOT
+
+document.getElementById("botName").textContent =
+data.botName;
+
+document.getElementById("groups").textContent =
+data.groups;
+
+document.getElementById("sessions").textContent =
+data.sessions;
+
+document.getElementById("users").textContent =
+data.users;
+
+document.getElementById("uptime").textContent =
+data.uptime;
+
+
+// SERVER
+
+document.getElementById("cpu").textContent =
+data.cpu;
+
+document.getElementById("heap").textContent =
+data.heap + " MB";
+
+document.getElementById("node").textContent =
+data.node;
+
+document.getElementById("platform").textContent =
+data.platform;
+
+
+}
+
+catch(error) {
+
+document.getElementById("status").textContent =
+"OFFLINE";
+
+document.getElementById("status").className =
+"text-3xl font-bold text-red-400 mt-2";
+
+}
+
+}
+
+
+// FIRST LOAD
+
+loadStats();
+
+
+// AUTO UPDATE
+
+setInterval(loadStats, 3000);
+
+</script>
+
+
+</body>
+
+</html>
+
+`);
+
+});
+
+
+// ===============================
+// ERROR HANDLER
+// ===============================
+
+process.on("uncaughtException", (error) => {
+
+    errorsCount++;
+
+    console.error("Uncaught Exception:", error);
+
+});
+
+
+process.on("unhandledRejection", (error) => {
+
+    errorsCount++;
+
+    console.error("Unhandled Rejection:", error);
+
+});
+
+
+// ===============================
+// START SERVER
+// ===============================
+
 app.listen(PORT, () => {
-    console.log(`
-Don't Forget To Give Star ‼️
 
-Server running on http://localhost:` + PORT);
+    console.log(`
+╔══════════════════════════════════════╗
+║          MIYORA MD ADMIN             ║
+╠══════════════════════════════════════╣
+║ Server : http://localhost:${PORT}
+║ Admin  : http://localhost:${PORT}/admin
+╚══════════════════════════════════════╝
+`);
+
 });
+
 
 module.exports = app;
