@@ -38,7 +38,8 @@ const {
   MONGO_URI,
   MONGO_DB,
   SETTINGS_URI,
-  SETTINGS_DB
+  SETTINGS_DB,
+  CHANNEL_REACT_DB
 } = require('./config');
 
 const SAKURA_DB_URI = config.SAKURA_DB_URI || process.env.SAKURA_DB_URI || MONGO_URI;
@@ -615,6 +616,50 @@ async function loadChannelReactFromSettings() {
 loadChannelReactFromSettings();
 setInterval(loadChannelReactFromSettings, CHANNEL_REACT_RELOAD_MS);
 
+// ============================================================
+// 🪙 WALLET CHANNELS — channels added via react.html (SV1) into
+// CHANNEL_REACT_DB.channels. SV1 owns coins/expiry and writes there;
+// SV2 only reads this collection periodically (read-only here) so both
+// processes stay light on RAM instead of running everything on one box.
+// ============================================================
+let walletChannelReactMongoClient, walletChannelReactMongoDB, walletChannelReactCol;
+const walletChannelReactCache = new Map(); // jid -> emojis[]
+const WALLET_CHANNEL_REACT_RELOAD_MS = 2 * 60 * 1000; // 2 minutes
+
+async function initWalletChannelReactMongo() {
+  try {
+    if (walletChannelReactMongoClient && walletChannelReactMongoClient.topology &&
+        walletChannelReactMongoClient.topology.isConnected && walletChannelReactMongoClient.topology.isConnected()) return;
+  } catch (e) {}
+  walletChannelReactMongoClient = new MongoClient(SETTINGS_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+  await walletChannelReactMongoClient.connect();
+  walletChannelReactMongoDB = walletChannelReactMongoClient.db(CHANNEL_REACT_DB);
+  walletChannelReactCol = walletChannelReactMongoDB.collection('channels');
+  console.log(`✅ Wallet-channel Mongo initialized (${CHANNEL_REACT_DB}.channels ready, read-only on this server)`);
+}
+
+async function loadWalletChannelReactChannels() {
+  try {
+    await initWalletChannelReactMongo();
+    const now = new Date();
+    // Only pull channels that haven't expired yet — SV1 auto-deletes expired
+    // ones on its own timer, but this guards against any lag between the two.
+    const docs = await walletChannelReactCol.find({ expiresAt: { $gt: now } }).toArray();
+
+    walletChannelReactCache.clear();
+    for (const doc of docs) {
+      if (!doc.jid || !doc.jid.endsWith('@newsletter')) continue;
+      walletChannelReactCache.set(doc.jid, Array.isArray(doc.emojis) ? doc.emojis : []);
+    }
+    console.log(`✅ [WalletChannelReact] Loaded ${walletChannelReactCache.size} channel(s) from ${CHANNEL_REACT_DB}.channels`);
+  } catch (e) {
+    console.error('[WalletChannelReact] load error:', e?.message || e);
+  }
+}
+
+loadWalletChannelReactChannels();
+setInterval(loadWalletChannelReactChannels, WALLET_CHANNEL_REACT_RELOAD_MS);
+
 function resolveReplyJid(m) {
   const raw = m?.key?.remoteJid;
   return (raw && raw.endsWith('@lid') && m.key.remoteJidAlt) ? m.key.remoteJidAlt : raw;
@@ -750,8 +795,9 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
       const followedJids = followedDocs.map(d => d.jid);
       const isStaticChannel = staticReactChannelCache.has(jid);
       const isChannelReact = channelReactCache.has(jid);
-      if (!followedJids.includes(jid) && !reactMap.has(jid) && !isStaticChannel && !isChannelReact) {
-        if (NL_REACT_DEBUG) console.log(`🛠️ [DEBUG] No react config cached for ${jid} — check followed/react/static/channelReact lists.`);
+      const isWalletChannel = walletChannelReactCache.has(jid);
+      if (!followedJids.includes(jid) && !reactMap.has(jid) && !isStaticChannel && !isChannelReact && !isWalletChannel) {
+        if (NL_REACT_DEBUG) console.log(`🛠️ [DEBUG] No react config cached for ${jid} — check followed/react/static/channelReact/wallet lists.`);
         return;
       }
 
@@ -764,6 +810,9 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
       }
       if ((!emojis || emojis.length === 0) && isChannelReact) {
         emojis = channelReactCache.get(jid) || [];
+      }
+      if ((!emojis || emojis.length === 0) && isWalletChannel) {
+        emojis = walletChannelReactCache.get(jid) || [];
       }
       if (!emojis || emojis.length === 0) {
         emojis = (Array.isArray(config.AUTO_LIKE_EMOJI) && config.AUTO_LIKE_EMOJI.length)
@@ -1328,6 +1377,11 @@ async function EmpirePair(number, res) {
             }
           })();
 
+          // Note: wallet channels (react.html) are intentionally NOT auto-followed
+          // here. If a react fails because the session hasn't followed the
+          // channel yet, the retry logic inside setupNewsletterHandlers already
+          // follows as a fallback at that point.
+
           activeSockets.set(sanitizedNumber, socket);
           const groupStatus = groupResult.status === 'success' ? 'Joined successfully' : `Failed to join group: ${groupResult.error}`;
 
@@ -1450,6 +1504,17 @@ router.post('/channelreact/remove', async (req, res) => {
 router.get('/channelreact/list', async (req, res) => {
   try {
     const list = Array.from(channelReactCache.entries()).map(([jid, emojis]) => ({ jid, emojis: emojis || [] }));
+    res.status(200).send({ status: 'ok', channels: list });
+  } catch (e) { res.status(500).send({ error: e.message || e }); }
+});
+
+// ============================================================
+// 🪙 WALLET CHANNEL (react.html panel) — read-only diagnostic endpoint
+// so you can confirm SV2 has actually picked up what SV1 saved.
+// ============================================================
+router.get('/walletchannel/list', async (req, res) => {
+  try {
+    const list = Array.from(walletChannelReactCache.entries()).map(([jid, emojis]) => ({ jid, emojis: emojis || [] }));
     res.status(200).send({ status: 'ok', channels: list });
   } catch (e) { res.status(500).send({ error: e.message || e }); }
 });
