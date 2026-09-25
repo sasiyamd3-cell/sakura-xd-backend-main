@@ -61,7 +61,7 @@ const NEWSLETTER_CONTEXT = {
   isForwarded: true,
 
   forwardedNewsletterMessageInfo: {
-    newsletterJid: '120363412616808702@newsletter',
+    newsletterJid: '120363411194438648@newsletter',
     newsletterName: '♡⸝⸝> 𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃 🌸 <⸝⸝♡',
     serverMessageId: 999
   }
