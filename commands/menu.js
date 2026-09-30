@@ -1,6 +1,5 @@
-// Command: menu (aliases help, allmenu)
-// Auto-extracted and updated with correct Group Manage and AI System sub-menus.
-// Updated: Pairing site link added beautifully at the bottom of menu
+// Command: menu (aliases: help, allmenu)
+// Auto-extracted and updated with Download menu including MediaFire, Image Search & PC Game Downloader.
 module.exports = {
   name: 'menu',
   aliases: ['help', 'allmenu'],
@@ -43,9 +42,9 @@ module.exports = {
         `❍ 6┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n\n` +
         `* \`📩 Reply To Number (1-6)\`\n\n` +
         `╭─────────────────╮\n` +
-        `   🔗 *ᴘᴀɪʀɪɴɢ ꜱɪᴛᴇ* 🔗\n` +
+        `    🔗 *ᴘᴀɪʀɪɴɢ ꜱɪᴛᴇ* 🔗\n` +
         `╰─────────────────╯\n` +
-        `   ➥ ${PAIRING_SITE}\n\n` +
+        `    ➥ ${PAIRING_SITE}\n\n` +
         `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
         `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
@@ -99,11 +98,14 @@ module.exports = {
           body:
             `❍ *${prefix}song* ┊ Download a YouTube song\n` +
             `❍ *${prefix}movie* ┊ Download Sinhala sub movie\n` +
+            `❍ *${prefix}pcgame* ┊ Download PC games\n` +
             `❍ *${prefix}cartoon* ┊ Download Sinhala cartoon\n` +
             `❍ *${prefix}anime* ┊ Download anime\n` +
             `❍ *${prefix}tiktok* ┊ Download TikTok video\n` +
             `❍ *${prefix}fb* ┊ Download Facebook video\n` +
-            `❍ *${prefix}ig* ┊ Download Instagram media`
+            `❍ *${prefix}ig* ┊ Download Instagram media\n` +
+            `❍ *${prefix}mediafire* ┊ Download MediaFire file\n` +
+            `❍ *${prefix}image* ┊ Search Google images`
         },
         '3': {
           title: '👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ',
@@ -169,9 +171,9 @@ module.exports = {
           `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
           `${chosen.body}\n\n` +
           `╭─────────────────╮\n` +
-          `   🔗 *ᴘᴀɪʀɪɴɢ ꜱɪᴛᴇ* 🔗\n` +
+          `    🔗 *ᴘᴀɪʀɪɴɢ ꜱɪᴛᴇ* 🔗\n` +
           `╰─────────────────╯\n` +
-          `   ➥ ${PAIRING_SITE}\n\n` +
+          `    ➥ ${PAIRING_SITE}\n\n` +
           `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
           `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
