@@ -1,5 +1,5 @@
 // Command: menu (aliases: help, allmenu)
-// Fixed and stable simple menu version with all latest commands added.
+// Auto-extracted from sakura.js switch-case during commandLoader refactor.
 module.exports = {
   name: 'menu',
   aliases: ['help', 'allmenu'],
@@ -12,41 +12,38 @@ module.exports = {
     } = ctx;
 
       const sanitized = (number || '').replace(/[^0-9]/g, '');
-      const cfg = sessionConfig || {};
+      const cfg = sessionConfig; // reused from top of handler (was: extra Mongo query per command)
       const botName = cfg.botName || BOT_NAME_FANCY;
       const logo    = cfg.logo    || config.IMAGE_PATH;
-
-      // 🔗 Pairing Site Link
-      const PAIRING_SITE = 'https://miyora.kurox.site';
 
       const channelContext = {
         forwardingScore: 1,
         isForwarded: true,
         forwardedNewsletterMessageInfo: {
-          newsletterJid: NEWSLETTER_CONTEXT?.forwardedNewsletterMessageInfo?.newsletterJid || '',
+          newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
           newsletterName: botName,
           serverMessageId: 999,
         }
       };
 
-      const menuCaption = 
-        `✨ *${botName} - MAIN MENU* ✨\n\n` +
-        `Hello there! Please choose a category by replying with the corresponding number:\n\n` +
-        `  1. 📋 Main Menu\n` +
-        `  2. 📥 Download Menu\n` +
-        `  3. 👑 Owner Menu\n` +
-        `  4. 👥 Group Manage Menu\n` +
-        `  5. 🤖 AI System\n` +
-        `  6. 🌙 Other Menu\n\n` +
-        `> *Reply with a number (1-6) to open the menu.*\n\n` +
-        `🔗 *Pairing Site:* ${PAIRING_SITE}\n\n` +
-        `© Powered by Black Cat OFC`;
+      const menuCaption =
+        `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *${botName} 𝐌𝐄𝐍𝐔* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
+        `┊ ┊ ✫ ˚♡ ⋆｡❀\n` +
+        `┊ ☪︎⋆\n\n` +
+        `> 💌 *ᴡᴇʟᴄᴏᴍᴇ ᴅᴀʀʟɪɴɢ, ᴘɪᴄᴋ ᴀ ᴄᴀᴛᴇɢᴏʀʏ~*\n\n` +
+        `❍ 1┊ ❮ *📋 ᴍᴀɪɴ ᴍᴇɴᴜ* ❯\n` +
+        `❍ 2┊ ❮ *📥 ᴅᴏᴡɴʟᴏᴀᴅ ᴍᴇɴᴜ* ❯\n` +
+        `❍ 3┊ ❮ *👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ* ❯\n` +
+        `❍ 4┊ ❮ *👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ* ❯\n` +
+        `❍ 5┊ ❮ *🤖 ᴀɪ sʏsᴛᴇᴍ* ❯\n` +
+        `❍ 6┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n\n` +
+        `* \`📩 Reply To Number (1-6)\`\n\n` +
+        `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
+        `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
-      try {
-        await socket.sendMessage(sender, {
-          react: { text: '⚡', key: msg.key }
-        });
-      } catch (e) {}
+      await socket.sendMessage(sender, {
+        react: { text: '🌸', key: msg.key }
+      });
 
       let menuMsg;
       try {
@@ -81,142 +78,131 @@ module.exports = {
 
       const subMenus = {
         '1': {
-          title: '📋 MAIN MENU',
+          title: '📋 ᴍᴀɪɴ ᴍᴇɴᴜ',
           body:
-            `• ${prefix}menu - Show this menu\n` +
-            `• ${prefix}alive - Check bot status\n` +
-            `• ${prefix}ping - Check bot speed`
+            `❍ *${prefix}menu* ┊ Show this cute menu\n` +
+            `❍ *${prefix}alive* ┊ Check bot status\n` +
+            `❍ *${prefix}ping* ┊ Check bot speed`
         },
         '2': {
-          title: '📥 DOWNLOAD MENU',
+          title: '📥 ᴅᴏᴡɴʟᴏᴀᴅ ᴍᴇɴᴜ',
           body:
-            `• ${prefix}song - Download YouTube song\n` +
-            `• ${prefix}movie - Download Sinhala sub movie\n` +
-            `• ${prefix}pcgame - Download PC games\n` +
-            `• ${prefix}cartoon - Download Sinhala cartoon\n` +
-            `• ${prefix}anime - Download anime\n` +
-            `• ${prefix}tiktok - Download TikTok video\n` +
-            `• ${prefix}fb - Download Facebook video\n` +
-            `• ${prefix}ig - Download Instagram media\n` +
-            `• ${prefix}mediafire - Download MediaFire file\n` +
-            `• ${prefix}image - Search Google images`
+            `❍ *${prefix}song* ┊ Download a YouTube song\n` +
+            `❍ *${prefix}movie* ┊ Download Sinhala sub movie\n` +
+            `❍ *${prefix}pcgame* ┊ Download PC games\n` +
+            `❍ *${prefix}cartoon* ┊ Download Sinhala cartoon\n` +
+            `❍ *${prefix}anime* ┊ Download anime\n` +
+            `❍ *${prefix}tiktok* ┊ Download TikTok video\n` +
+            `❍ *${prefix}fb* ┊ Download Facebook video\n` +
+            `❍ *${prefix}ig* ┊ Download Instagram media\n` +
+            `❍ *${prefix}mediafire* ┊ Download MediaFire file\n` +
+            `❍ *${prefix}image* ┊ Search Google images`
         },
         '3': {
-          title: '👑 OWNER MENU',
+          title: '👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ',
           body:
-            `• ${prefix}owner - Get owner contact card`
+            `❍ *${prefix}owner* ┊ Get owner contact card`
         },
         '4': {
-          title: '👥 GROUP MANAGE MENU',
+          title: '👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ',
           body:
-            `• ${prefix}grup open - Open group\n` +
-            `• ${prefix}grup close - Close group\n` +
-            `• ${prefix}grup name - Change group name\n` +
-            `• ${prefix}grup desc - Change group description\n` +
-            `• ${prefix}grup lock - Lock group settings\n` +
-            `• ${prefix}grup unlock - Unlock group settings\n` +
-            `• ${prefix}grup add - Add member\n` +
-            `• ${prefix}grup kick - Remove user\n` +
-            `• ${prefix}grup promote - Make admin\n` +
-            `• ${prefix}grup demote - Remove admin\n` +
-            `• ${prefix}grup tagall - Tag all members\n` +
-            `• ${prefix}grup antilink - Toggle anti-link\n` +
-            `• ${prefix}grup antistatus - Toggle anti-status`
+            `❍ *${prefix}grup open* 🔓 ┊ Open group for everyone\n` +
+            `❍ *${prefix}grup close* 🔒 ┊ Close group for admins\n` +
+            `❍ *${prefix}grup name* ✏️ ┊ Change group name\n` +
+            `❍ *${prefix}grup desc* 📝 ┊ Change group description\n` +
+            `❍ *${prefix}grup lock* 📌 ┊ Lock group settings\n` +
+            `❍ *${prefix}grup unlock* 🔓 ┊ Unlock group settings\n` +
+            `❍ *${prefix}grup add* ➕ ┊ Add a member by number\n` +
+            `❍ *${prefix}grup kick* 👢 ┊ Remove quoted/mentioned user\n` +
+            `❍ *${prefix}grup promote* 👑 ┊ Promote user to admin\n` +
+            `❍ *${prefix}grup demote* 🔻 ┊ Demote admin from user\n` +
+            `❍ *${prefix}grup tagall* 🏷️ ┊ Tag all group members\n` +
+            `❍ *${prefix}grup antilink* 🛡️ ┊ Toggle auto-delete links\n` +
+            `❍ *${prefix}grup antistatus* 🛡️ ┊ Toggle status/promo links`
         },
         '5': {
-          title: '🤖 AI SYSTEM',
+          title: '🤖 ᴀɪ sʏsᴛᴇᴍ',
           body:
-            `• ${prefix}ai - Chat with AI assistant\n` +
-            `• ${prefix}gpt - Ask from ChatGPT\n` +
-            `• ${prefix}gemini - Ask from Gemini\n` +
-            `• ${prefix}imagine - Generate AI image\n` +
-            `Example: ${prefix}ai Hello`
+            `❍ *${prefix}ai* ┊ Chat with AI assistant\n` +
+            `❍ *${prefix}gpt* ┊ Ask from ChatGPT AI\n` +
+            `❍ *${prefix}gemini* ┊ Ask from Google Gemini AI\n` +
+            `❍ *${prefix}imagine* ┊ Generate AI image\n` +
+            `📌 *Example:* ${prefix}ai What is quantum physics?`
         },
         '6': {
-          title: '🌙 OTHER MENU',
+          title: '🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ',
           body:
-            `• ${prefix}vv - Unlock view-once media\n` +
-            `• ${prefix}send - Send media by url\n` +
-            `• ${prefix}getpp - Get profile picture\n` +
-            `• ${prefix}tts - Text to voice note\n` +
-            `• ${prefix}short - Shorten URL\n` +
-            `• ${prefix}qr - Generate QR code\n` +
-            `• ${prefix}quote - Random inspiring quote\n` +
-            `• ${prefix}weather - Check city weather`
+            `❍ *${prefix}vv* ┊ Unlock view-once media\n` +
+            `❍ *${prefix}send* ┊ Send media by url/reply\n` +
+            `❍ *${prefix}getpp* ┊ Get a user's profile picture\n` +
+            `❍ *${prefix}tts* ┊ Convert text to voice note\n` +
+            `❍ *${prefix}short* ┊ Shorten long URLs\n` +
+            `❍ *${prefix}qr* ┊ Generate QR code for text/link\n` +
+            `❍ *${prefix}quote* ┊ Get a random inspiring quote\n` +
+            `❍ *${prefix}weather* ┊ Check city weather details`
         }
       };
 
-      // Stable Promise-based Message Listener
-      const collected = await new Promise((resolve) => {
-        const listener = ({ messages }) => {
-          for (const m2 of messages) {
-            const isReply = m2.message?.extendedTextMessage?.contextInfo?.stanzaId === menuMsg.key.id;
-            const text = (m2.message?.conversation || m2.message?.extendedTextMessage?.text || '').trim();
-            const isValid = ['1', '2', '3', '4', '5', '6'].includes(text);
-            const isSame = resolveReplyJid(m2) === sender;
+      const menuListener = async (msgUpdate) => {
+        const reply2 = msgUpdate.messages[0];
+        if (!reply2 || !reply2.message) return;
 
-            if (isReply && isValid && isSame) {
-              clearTimeout(timeout);
-              socket.ev.off('messages.upsert', listener);
-              resolve(m2);
+        const isReplyToMenu = reply2.message?.extendedTextMessage?.contextInfo?.stanzaId === menuMsg.key.id;
+        const isSame = resolveReplyJid(reply2) === sender;
+        if (!isReplyToMenu || !isSame) return;
+
+        const text = (reply2.message?.conversation || reply2.message?.extendedTextMessage?.text || '').trim();
+        if (!['1', '2', '3', '4', '5', '6'].includes(text)) return;
+
+        socket.ev.off('messages.upsert', menuListener);
+
+        await socket.sendMessage(sender, { react: { text: '✨', key: reply2.key } });
+
+        const chosen = subMenus[text];
+
+        const subCaption =
+          `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *${chosen.title}* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
+          `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
+          `${chosen.body}\n\n` +
+          `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
+          `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
+
+        try {
+          if (String(logo).startsWith('http')) {
+            await socket.sendMessage(sender, {
+              image: { url: logo },
+              caption: subCaption,
+              contextInfo: channelContext
+            }, { quoted: reply2 });
+          } else {
+            try {
+              const buf = fs.readFileSync(logo);
+              await socket.sendMessage(sender, {
+                image: buf,
+                caption: subCaption,
+                contextInfo: channelContext
+              }, { quoted: reply2 });
+            } catch (_e) {
+              await socket.sendMessage(sender, {
+                image: { url: config.IMAGE_PATH },
+                caption: subCaption,
+                contextInfo: channelContext
+              }, { quoted: reply2 });
             }
           }
-        };
-
-        const timeout = setTimeout(() => {
-          socket.ev.off('messages.upsert', listener);
-          resolve(null);
-        }, 60000);
-
-        socket.ev.on('messages.upsert', listener);
-      });
-
-      if (!collected) return;
-
-      const choice = (collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim();
-      const chosen = subMenus[choice];
-
-      if (!chosen) return;
-
-      try {
-        await socket.sendMessage(sender, { react: { text: '✅', key: collected.key } });
-      } catch (e) {}
-
-      const subCaption = 
-        `✨ *${botName} - ${chosen.title}* ✨\n\n` +
-        `${chosen.body}\n\n` +
-        `🔗 *Pairing Site:* ${PAIRING_SITE}\n\n` +
-        `© Powered by Black Cat OFC`;
-
-      try {
-        if (String(logo).startsWith('http')) {
+        } catch (e) {
           await socket.sendMessage(sender, {
-            image: { url: logo },
-            caption: subCaption,
+            text: subCaption,
             contextInfo: channelContext
-          }, { quoted: collected });
-        } else {
-          try {
-            const buf = fs.readFileSync(logo);
-            await socket.sendMessage(sender, {
-              image: buf,
-              caption: subCaption,
-              contextInfo: channelContext
-            }, { quoted: collected });
-          } catch (_e) {
-            await socket.sendMessage(sender, {
-              image: { url: config.IMAGE_PATH },
-              caption: subCaption,
-              contextInfo: channelContext
-            }, { quoted: collected });
-          }
+          }, { quoted: reply2 });
         }
-      } catch (e) {
-        await socket.sendMessage(sender, {
-          text: subCaption,
-          contextInfo: channelContext
-        }, { quoted: collected });
-      }
+      };
+
+      socket.ev.on('messages.upsert', menuListener);
+
+      setTimeout(() => {
+        socket.ev.off('messages.upsert', menuListener);
+      }, 60000);
 
   }
 };
