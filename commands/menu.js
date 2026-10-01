@@ -18,7 +18,7 @@ module.exports = {
       const logo    = cfg.logo    || config.IMAGE_PATH;
 
       // 🔗 Pairing Site Link
-      const PAIRING_SITE = 'https://miyora.kurox.site';
+      const PAIRING_SITE = '/miyora-mini.site';
 
       const channelContext = {
         forwardingScore: 1,
