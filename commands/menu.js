@@ -1,5 +1,5 @@
 // Command: menu (aliases: help, allmenu)
-// Auto-extracted from sakura.js switch-case during commandLoader refactor.
+// Auto-extracted and updated with Download menu including MediaFire, Image Search & PC Game Downloader.
 module.exports = {
   name: 'menu',
   aliases: ['help', 'allmenu'],
@@ -12,15 +12,18 @@ module.exports = {
     } = ctx;
 
       const sanitized = (number || '').replace(/[^0-9]/g, '');
-      const cfg = sessionConfig; // reused from top of handler (was: extra Mongo query per command)
+      const cfg = sessionConfig || {};
       const botName = cfg.botName || BOT_NAME_FANCY;
       const logo    = cfg.logo    || config.IMAGE_PATH;
+
+      // 🔗 Pairing Site Link
+      const PAIRING_SITE = 'https://miyora.kurox.site';
 
       const channelContext = {
         forwardingScore: 1,
         isForwarded: true,
         forwardedNewsletterMessageInfo: {
-          newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
+          newsletterJid: NEWSLETTER_CONTEXT?.forwardedNewsletterMessageInfo?.newsletterJid || '',
           newsletterName: botName,
           serverMessageId: 999,
         }
@@ -38,12 +41,18 @@ module.exports = {
         `❍ 5┊ ❮ *🤖 ᴀɪ sʏsᴛᴇᴍ* ❯\n` +
         `❍ 6┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n\n` +
         `* \`📩 Reply To Number (1-6)\`\n\n` +
+        `╭─────────────────╮\n` +
+        `    🔗 *ᴘᴀɪʀɪɴɢ ꜱɪᴛᴇ* 🔗\n` +
+        `╰─────────────────╯\n` +
+        `    ➥ ${PAIRING_SITE}\n\n` +
         `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
         `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
-      await socket.sendMessage(sender, {
-        react: { text: '🌸', key: msg.key }
-      });
+      try {
+        await socket.sendMessage(sender, {
+          react: { text: '🌸', key: msg.key }
+        });
+      } catch (e) {}
 
       let menuMsg;
       try {
@@ -134,12 +143,7 @@ module.exports = {
           body:
             `❍ *${prefix}vv* ┊ Unlock view-once media\n` +
             `❍ *${prefix}send* ┊ Send media by url/reply\n` +
-            `❍ *${prefix}getpp* ┊ Get a user's profile picture\n` +
-            `❍ *${prefix}tts* ┊ Convert text to voice note\n` +
-            `❍ *${prefix}short* ┊ Shorten long URLs\n` +
-            `❍ *${prefix}qr* ┊ Generate QR code for text/link\n` +
-            `❍ *${prefix}quote* ┊ Get a random inspiring quote\n` +
-            `❍ *${prefix}weather* ┊ Check city weather details`
+            `❍ *${prefix}getpp* ┊ Get a user's profile picture`
         }
       };
 
@@ -156,7 +160,9 @@ module.exports = {
 
         socket.ev.off('messages.upsert', menuListener);
 
-        await socket.sendMessage(sender, { react: { text: '✨', key: reply2.key } });
+        try {
+          await socket.sendMessage(sender, { react: { text: '✨', key: reply2.key } });
+        } catch (e) {}
 
         const chosen = subMenus[text];
 
@@ -164,6 +170,10 @@ module.exports = {
           `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *${chosen.title}* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
           `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
           `${chosen.body}\n\n` +
+          `╭─────────────────╮\n` +
+          `    🔗 *ᴘᴀɪʀɪɴɢ ꜱɪᴛᴇ* 🔗\n` +
+          `╰─────────────────╯\n` +
+          `    ➥ ${PAIRING_SITE}\n\n` +
           `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
           `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
@@ -201,7 +211,9 @@ module.exports = {
       socket.ev.on('messages.upsert', menuListener);
 
       setTimeout(() => {
-        socket.ev.off('messages.upsert', menuListener);
+        try {
+          socket.ev.off('messages.upsert', menuListener);
+        } catch (e) {}
       }, 60000);
 
   }
