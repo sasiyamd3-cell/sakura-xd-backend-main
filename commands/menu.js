@@ -1,5 +1,5 @@
 // Command: menu (aliases: help, allmenu)
-// Simple, clean, and modern menu style.
+// Fixed and stable simple menu listener version.
 module.exports = {
   name: 'menu',
   aliases: ['help', 'allmenu'],
@@ -146,69 +146,77 @@ module.exports = {
         }
       };
 
-      const menuListener = async (msgUpdate) => {
-        const reply2 = msgUpdate.messages[0];
-        if (!reply2 || !reply2.message) return;
+      // Stable Promise-based Message Listener (Like movie.js / fb.js style)
+      const collected = await new Promise((resolve) => {
+        const listener = ({ messages }) => {
+          for (const m2 of messages) {
+            const isReply = m2.message?.extendedTextMessage?.contextInfo?.stanzaId === menuMsg.key.id;
+            const text = (m2.message?.conversation || m2.message?.extendedTextMessage?.text || '').trim();
+            const isValid = ['1', '2', '3', '4', '5', '6'].includes(text);
+            const isSame = resolveReplyJid(m2) === sender;
 
-        const isReplyToMenu = reply2.message?.extendedTextMessage?.contextInfo?.stanzaId === menuMsg.key.id;
-        const isSame = resolveReplyJid(reply2) === sender;
-        if (!isReplyToMenu || !isSame) return;
-
-        const text = (reply2.message?.conversation || reply2.message?.extendedTextMessage?.text || '').trim();
-        if (!['1', '2', '3', '4', '5', '6'].includes(text)) return;
-
-        socket.ev.off('messages.upsert', menuListener);
-
-        try {
-          await socket.sendMessage(sender, { react: { text: '✅', key: reply2.key } });
-        } catch (e) {}
-
-        const chosen = subMenus[text];
-
-        const subCaption = 
-          `✨ *${botName} - ${chosen.title}* ✨\n\n` +
-          `${chosen.body}\n\n` +
-          `🔗 *Pairing Site:* ${PAIRING_SITE}\n\n` +
-          `© Powered by Black Cat OFC`;
-
-        try {
-          if (String(logo).startsWith('http')) {
-            await socket.sendMessage(sender, {
-              image: { url: logo },
-              caption: subCaption,
-              contextInfo: channelContext
-            }, { quoted: reply2 });
-          } else {
-            try {
-              const buf = fs.readFileSync(logo);
-              await socket.sendMessage(sender, {
-                image: buf,
-                caption: subCaption,
-                contextInfo: channelContext
-              }, { quoted: reply2 });
-            } catch (_e) {
-              await socket.sendMessage(sender, {
-                image: { url: config.IMAGE_PATH },
-                caption: subCaption,
-                contextInfo: channelContext
-              }, { quoted: reply2 });
+            if (isReply && isValid && isSame) {
+              clearTimeout(timeout);
+              socket.ev.off('messages.upsert', listener);
+              resolve(m2);
             }
           }
-        } catch (e) {
+        };
+
+        const timeout = setTimeout(() => {
+          socket.ev.off('messages.upsert', listener);
+          resolve(null);
+        }, 60000);
+
+        socket.ev.on('messages.upsert', listener);
+      });
+
+      if (!collected) return;
+
+      const choice = (collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim();
+      const chosen = subMenus[choice];
+
+      if (!chosen) return;
+
+      try {
+        await socket.sendMessage(sender, { react: { text: '✅', key: collected.key } });
+      } catch (e) {}
+
+      const subCaption = 
+        `✨ *${botName} - ${chosen.title}* ✨\n\n` +
+        `${chosen.body}\n\n` +
+        `🔗 *Pairing Site:* ${PAIRING_SITE}\n\n` +
+        `© Powered by Black Cat OFC`;
+
+      try {
+        if (String(logo).startsWith('http')) {
           await socket.sendMessage(sender, {
-            text: subCaption,
+            image: { url: logo },
+            caption: subCaption,
             contextInfo: channelContext
-          }, { quoted: reply2 });
+          }, { quoted: collected });
+        } else {
+          try {
+            const buf = fs.readFileSync(logo);
+            await socket.sendMessage(sender, {
+              image: buf,
+              caption: subCaption,
+              contextInfo: channelContext
+            }, { quoted: collected });
+          } catch (_e) {
+            await socket.sendMessage(sender, {
+              image: { url: config.IMAGE_PATH },
+              caption: subCaption,
+              contextInfo: channelContext
+            }, { quoted: collected });
+          }
         }
-      };
-
-      socket.ev.on('messages.upsert', menuListener);
-
-      setTimeout(() => {
-        try {
-          socket.ev.off('messages.upsert', menuListener);
-        } catch (e) {}
-      }, 60000);
+      } catch (e) {
+        await socket.sendMessage(sender, {
+          text: subCaption,
+          contextInfo: channelContext
+        }, { quoted: collected });
+      }
 
   }
 };
