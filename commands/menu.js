@@ -1,5 +1,5 @@
 // Command: menu (aliases: help, allmenu)
-// Fixed and stable simple menu listener version.
+// Fixed and stable simple menu version with all latest commands added.
 module.exports = {
   name: 'menu',
   aliases: ['help', 'allmenu'],
@@ -146,7 +146,7 @@ module.exports = {
         }
       };
 
-      // Stable Promise-based Message Listener (Like movie.js / fb.js style)
+      // Stable Promise-based Message Listener
       const collected = await new Promise((resolve) => {
         const listener = ({ messages }) => {
           for (const m2 of messages) {
