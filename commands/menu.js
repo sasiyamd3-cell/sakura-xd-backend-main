@@ -1,5 +1,5 @@
 // Command: menu (aliases: help, allmenu)
-// Auto-extracted and updated with Download menu including MediaFire, Image Search & PC Game Downloader.
+// Auto-extracted and updated with Full Download, AI, Group, and Extended Other Menu commands.
 module.exports = {
   name: 'menu',
   aliases: ['help', 'allmenu'],
@@ -143,7 +143,12 @@ module.exports = {
           body:
             `❍ *${prefix}vv* ┊ Unlock view-once media\n` +
             `❍ *${prefix}send* ┊ Send media by url/reply\n` +
-            `❍ *${prefix}getpp* ┊ Get a user's profile picture`
+            `❍ *${prefix}getpp* ┊ Get a user's profile picture\n` +
+            `❍ *${prefix}tts* ┊ Convert text to voice note\n` +
+            `❍ *${prefix}short* ┊ Shorten long URLs\n` +
+            `❍ *${prefix}qr* ┊ Generate QR code for text/link\n` +
+            `❍ *${prefix}quote* ┊ Get a random inspiring quote\n` +
+            `❍ *${prefix}weather* ┊ Check city weather details`
         }
       };
 
