@@ -16,6 +16,8 @@ module.exports = {
       const botName = cfg.botName || BOT_NAME_FANCY;
       const logo    = cfg.logo    || config.IMAGE_PATH;
 
+      const PAIRING_SITE = 'https://miyora-mini.site';
+
       const channelContext = {
         forwardingScore: 1,
         isForwarded: true,
@@ -38,6 +40,7 @@ module.exports = {
         `❍ 5┊ ❮ *🤖 ᴀɪ sʏsᴛᴇᴍ* ❯\n` +
         `❍ 6┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n\n` +
         `* \`📩 Reply To Number (1-6)\`\n\n` +
+        `🔗 *Pairing Site:* ${PAIRING_SITE}\n\n` +
         `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
         `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
@@ -164,6 +167,7 @@ module.exports = {
           `🌸⃝⃘̉̉̉̉̉̉🧚‍♀️ *${chosen.title}* 🧚‍♀️🌸⃝⃘̉̉̉̉̉̉\n\n` +
           `┊ ┊ ✫ ˚♡ ⋆｡❀\n\n` +
           `${chosen.body}\n\n` +
+          `🔗 *Pairing Site:* ${PAIRING_SITE}\n\n` +
           `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
           `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
@@ -206,4 +210,3 @@ module.exports = {
 
   }
 };
-
