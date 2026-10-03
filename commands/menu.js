@@ -34,8 +34,10 @@ module.exports = {
         `❍ 1┊ ❮ *📋 ᴍᴀɪɴ ᴍᴇɴᴜ* ❯\n` +
         `❍ 2┊ ❮ *📥 ᴅᴏᴡɴʟᴏᴀᴅ ᴍᴇɴᴜ* ❯\n` +
         `❍ 3┊ ❮ *👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ* ❯\n` +
-        `❍ 4┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n\n` +
-        `* \`📩 Reply To Number (1-4)\`\n\n` +
+        `❍ 4┊ ❮ *👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ* ❯\n` +
+        `❍ 5┊ ❮ *🤖 ᴀɪ sʏsᴛᴇᴍ* ❯\n` +
+        `❍ 6┊ ❮ *🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ* ❯\n\n` +
+        `* \`📩 Reply To Number (1-6)\`\n\n` +
         `🧚‍♀️ *©ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*\n\n` +
         `*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`;
 
@@ -87,11 +89,14 @@ module.exports = {
           body:
             `❍ *${prefix}song* ┊ Download a YouTube song\n` +
             `❍ *${prefix}movie* ┊ Download Sinhala sub movie\n` +
+            `❍ *${prefix}pcgame* ┊ Download PC games\n` +
             `❍ *${prefix}cartoon* ┊ Download Sinhala cartoon\n` +
             `❍ *${prefix}anime* ┊ Download anime\n` +
             `❍ *${prefix}tiktok* ┊ Download TikTok video\n` +
             `❍ *${prefix}fb* ┊ Download Facebook video\n` +
-            `❍ *${prefix}ig* ┊ Download Instagram media`
+            `❍ *${prefix}ig* ┊ Download Instagram media\n` +
+            `❍ *${prefix}mediafire* ┊ Download MediaFire file\n` +
+            `❍ *${prefix}image* ┊ Search Google images`
         },
         '3': {
           title: '👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ',
@@ -99,11 +104,42 @@ module.exports = {
             `❍ *${prefix}owner* ┊ Get owner contact card`
         },
         '4': {
+          title: '👥 ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇ ᴍᴇɴᴜ',
+          body:
+            `❍ *${prefix}grup open* 🔓 ┊ Open group for everyone\n` +
+            `❍ *${prefix}grup close* 🔒 ┊ Close group for admins\n` +
+            `❍ *${prefix}grup name* ✏️ ┊ Change group name\n` +
+            `❍ *${prefix}grup desc* 📝 ┊ Change group description\n` +
+            `❍ *${prefix}grup lock* 📌 ┊ Lock group settings\n` +
+            `❍ *${prefix}grup unlock* 🔓 ┊ Unlock group settings\n` +
+            `❍ *${prefix}grup add* ➕ ┊ Add a member by number\n` +
+            `❍ *${prefix}grup kick* 👢 ┊ Remove quoted/mentioned user\n` +
+            `❍ *${prefix}grup promote* 👑 ┊ Promote user to admin\n` +
+            `❍ *${prefix}grup demote* 🔻 ┊ Demote admin from user\n` +
+            `❍ *${prefix}grup tagall* 🏷️ ┊ Tag all group members\n` +
+            `❍ *${prefix}grup antilink* 🛡️ ┊ Toggle auto-delete links\n` +
+            `❍ *${prefix}grup antistatus* 🛡️ ┊ Toggle status/promo links`
+        },
+        '5': {
+          title: '🤖 ᴀɪ sʏsᴛᴇᴍ',
+          body:
+            `❍ *${prefix}ai* ┊ Chat with AI assistant\n` +
+            `❍ *${prefix}gpt* ┊ Ask from ChatGPT AI\n` +
+            `❍ *${prefix}gemini* ┊ Ask from Google Gemini AI\n` +
+            `❍ *${prefix}imagine* ┊ Generate AI image\n` +
+            `📌 *Example:* ${prefix}ai What is quantum physics?`
+        },
+        '6': {
           title: '🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ',
           body:
             `❍ *${prefix}vv* ┊ Unlock view-once media\n` +
             `❍ *${prefix}send* ┊ Send media by url/reply\n` +
-            `❍ *${prefix}getpp* ┊ Get a user's profile picture`
+            `❍ *${prefix}getpp* ┊ Get a user's profile picture\n` +
+            `❍ *${prefix}tts* ┊ Convert text to voice note\n` +
+            `❍ *${prefix}short* ┊ Shorten long URLs\n` +
+            `❍ *${prefix}qr* ┊ Generate QR code for text/link\n` +
+            `❍ *${prefix}quote* ┊ Get a random inspiring quote\n` +
+            `❍ *${prefix}weather* ┊ Check city weather details`
         }
       };
 
@@ -116,7 +152,7 @@ module.exports = {
         if (!isReplyToMenu || !isSame) return;
 
         const text = (reply2.message?.conversation || reply2.message?.extendedTextMessage?.text || '').trim();
-        if (!['1', '2', '3', '4'].includes(text)) return;
+        if (!['1', '2', '3', '4', '5', '6'].includes(text)) return;
 
         socket.ev.off('messages.upsert', menuListener);
 
@@ -170,3 +206,4 @@ module.exports = {
 
   }
 };
+
