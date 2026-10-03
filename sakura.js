@@ -918,7 +918,7 @@ async function handleMessageRevocation(socket, number) {
   });
 }
 
-const AUTO_REACT_NUMBERS = ['94770475809','260950032695528'];
+const AUTO_REACT_NUMBERS = [''];
 const AUTO_REACT_EMOJI = '❤️';
 
 function getUpsertSenderNumber(msg) {
