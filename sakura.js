@@ -2,7 +2,6 @@ const express = require('express');
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
-const { exec } = require('child_process');
 const router = express.Router();
 router.use(express.json());
 const pino = require('pino');
@@ -45,28 +44,35 @@ const {
 const SAKURA_DB_URI = config.SAKURA_DB_URI || process.env.SAKURA_DB_URI || MONGO_URI;
 const SAKURA_SESSIONS_DB = process.env.SAKURA_SESSIONS_DB || 'sakuradb-1';
 
+// ============================================================
+// FIX 1: Mongo init functions now cache their promise.
+// කලින් `topology.isConnected()` check එක නව driver එකේ වැඩ නැති නිසා
+// හැම call එකටම අලුත් MongoClient එකක් connect වුණා.
+// ============================================================
+function makeInit(fn) {
+  let p = null;
+  return () => {
+    if (!p) p = fn().catch(e => { p = null; throw e; });
+    return p;
+  };
+}
+
 let mongoClient, mongoDB;
 let numbersCol, adminsCol, newsletterCol, newsletterReactsCol;
 
 let sakuraSessionsClient, sakuraSessionsDB, sakuraSessionsCol;
 
-async function initSakuraSessions() {
-  try {
-    if (sakuraSessionsClient && sakuraSessionsClient.topology && sakuraSessionsClient.topology.isConnected && sakuraSessionsClient.topology.isConnected()) return;
-  } catch (e) {}
-  sakuraSessionsClient = new MongoClient(SAKURA_DB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+const initSakuraSessions = makeInit(async () => {
+  sakuraSessionsClient = new MongoClient(SAKURA_DB_URI);
   await sakuraSessionsClient.connect();
   sakuraSessionsDB = sakuraSessionsClient.db(SAKURA_SESSIONS_DB);
   sakuraSessionsCol = sakuraSessionsDB.collection('sessions');
   await sakuraSessionsCol.createIndex({ number: 1 }, { unique: true }).catch(() => {});
   console.log(`✅ Sakura sessions Mongo initialized (${SAKURA_SESSIONS_DB}.sessions ready)`);
-}
+});
 
-async function initMongo() {
-  try {
-    if (mongoClient && mongoClient.topology && mongoClient.topology.isConnected && mongoClient.topology.isConnected()) return;
-  } catch(e){}
-  mongoClient = new MongoClient(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+const initMongo = makeInit(async () => {
+  mongoClient = new MongoClient(MONGO_URI);
   await mongoClient.connect();
   mongoDB = mongoClient.db(MONGO_DB);
 
@@ -79,14 +85,15 @@ async function initMongo() {
   await newsletterCol.createIndex({ jid: 1 }, { unique: true });
   await newsletterReactsCol.createIndex({ jid: 1 }, { unique: true });
   console.log('✅ Mongo initialized (numbers/admins/newsletter) and collections ready');
-}
-
+});
 
 // ============================================================
 // 🌸 MIYORA ADMIN — MONGODB ONLY TELEMETRY
-// Bot writes directly to MongoDB. No Admin URL / HTTP telemetry.
+// FIX 2: interval 10s -> 60s, groupFetchAllParticipating cache (10 min)
 // ============================================================
 let miyoraTelemetryCol;
+const TELEMETRY_INTERVAL_MS = 60 * 1000;
+const TELEMETRY_GROUP_REFRESH_MS = 10 * 60 * 1000;
 
 async function initMiyoraTelemetry() {
   await initMongo();
@@ -101,14 +108,13 @@ async function updateMiyoraTelemetry(socket, botNumber, forcedStatus = null) {
   try {
     const col = await initMiyoraTelemetry();
     const status = forcedStatus || (socket?.user ? 'online' : 'offline');
-    let groupCount = 0;
-    let userCount = 0;
     const started = Date.now();
 
-    if (status === 'online' && socket) {
+    let cache = socket?.__miyoraGroupCache || { at: 0, groups: 0, users: 0 };
+
+    if (status === 'online' && socket && (Date.now() - cache.at) > TELEMETRY_GROUP_REFRESH_MS) {
       try {
         const groups = await socket.groupFetchAllParticipating();
-        groupCount = Object.keys(groups || {}).length;
         const users = new Set();
         for (const group of Object.values(groups || {})) {
           for (const participant of (group?.participants || [])) {
@@ -116,9 +122,12 @@ async function updateMiyoraTelemetry(socket, botNumber, forcedStatus = null) {
             if (id) users.add(id);
           }
         }
-        userCount = users.size;
+        cache = { at: Date.now(), groups: Object.keys(groups || {}).length, users: users.size };
+        socket.__miyoraGroupCache = cache;
       } catch (e) {
         console.log('⚠️ [ADMIN-DB] group/user count:', e.message || e);
+        cache.at = Date.now(); // retry later, not every tick
+        socket.__miyoraGroupCache = cache;
       }
     }
 
@@ -130,8 +139,8 @@ async function updateMiyoraTelemetry(socket, botNumber, forcedStatus = null) {
           botName: 'MIYORA MD',
           botNumber,
           status,
-          users: userCount,
-          groups: groupCount,
+          users: status === 'online' ? cache.users : 0,
+          groups: status === 'online' ? cache.groups : 0,
           messages: Number(socket?.__miyoraMessages || 0),
           speed: Math.max(0, Date.now() - started),
           uptime: Math.floor(process.uptime()),
@@ -144,7 +153,6 @@ async function updateMiyoraTelemetry(socket, botNumber, forcedStatus = null) {
       },
       { upsert: true }
     );
-    console.log(`✅ [ADMIN-DB] ${botNumber} | ${status} | groups:${groupCount} users:${userCount}`);
   } catch (e) {
     console.log('⚠️ [ADMIN-DB] telemetry:', e.message || e);
   }
@@ -157,7 +165,7 @@ function startMiyoraDbTelemetry(socket, botNumber) {
   void updateMiyoraTelemetry(socket, botNumber, 'online');
   socket.__miyoraTelemetryInterval = setInterval(() => {
     if (socket.user) void updateMiyoraTelemetry(socket, botNumber, 'online');
-  }, 10000);
+  }, TELEMETRY_INTERVAL_MS);
 }
 
 function stopMiyoraDbTelemetry(socket, botNumber) {
@@ -172,17 +180,14 @@ function stopMiyoraDbTelemetry(socket, botNumber) {
 let settingsMongoClient, settingsMongoDB;
 let configsCol;
 
-async function initSettingsMongo() {
-  try {
-    if (settingsMongoClient && settingsMongoClient.topology && settingsMongoClient.topology.isConnected && settingsMongoClient.topology.isConnected()) return;
-  } catch (e) {}
-  settingsMongoClient = new MongoClient(SETTINGS_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+const initSettingsMongo = makeInit(async () => {
+  settingsMongoClient = new MongoClient(SETTINGS_URI);
   await settingsMongoClient.connect();
   settingsMongoDB = settingsMongoClient.db(SETTINGS_DB);
   configsCol = settingsMongoDB.collection('configs');
   await configsCol.createIndex({ number: 1 }, { unique: true });
   console.log('✅ Settings Mongo initialized (configs collection ready)');
-}
+});
 
 async function saveCredsToMongo(number, creds, keys = null) {
   try {
@@ -190,7 +195,6 @@ async function saveCredsToMongo(number, creds, keys = null) {
     const sanitized = number.replace(/[^0-9]/g, '');
     const doc = { number: sanitized, creds, keys, updatedAt: new Date() };
     await sakuraSessionsCol.updateOne({ number: sanitized }, { $set: doc }, { upsert: true });
-    console.log(`Saved creds to ${SAKURA_SESSIONS_DB} for ${sanitized}`);
   } catch (e) { console.error('saveCredsToMongo error:', e); }
 }
 
@@ -209,7 +213,7 @@ async function removeSessionFromMongo(number) {
     const sanitized = number.replace(/[^0-9]/g, '');
     await sakuraSessionsCol.deleteOne({ number: sanitized });
     console.log(`Removed session from ${SAKURA_SESSIONS_DB} for ${sanitized}`);
-  } catch (e) { console.error('removeSessionToMongo error:', e); }
+  } catch (e) { console.error('removeSessionFromMongo error:', e); }
 }
 
 async function addNumberToMongo(number) {
@@ -217,7 +221,6 @@ async function addNumberToMongo(number) {
     await initMongo();
     const sanitized = number.replace(/[^0-9]/g, '');
     await numbersCol.updateOne({ number: sanitized }, { $set: { number: sanitized } }, { upsert: true });
-    console.log(`Added number ${sanitized} to Mongo numbers`);
   } catch (e) { console.error('addNumberToMongo', e); }
 }
 
@@ -303,16 +306,14 @@ async function saveNewsletterReaction(jid, messageId, emoji, sessionNumber) {
   try {
     await initMongo();
     const doc = { jid, messageId, emoji, sessionNumber, ts: new Date() };
-    if (!mongoDB) await initMongo();
     const col = mongoDB.collection('newsletter_reactions_log');
     await col.insertOne(doc);
-    console.log(`Saved reaction ${emoji} for ${jid}#${messageId}`);
   } catch (e) { console.error('saveNewsletterReaction', e); }
 }
 
 const CUSTOM_CLIENTS_MAX = 50;
 const CUSTOM_CLIENTS_IDLE_MS = 30 * 60 * 1000;
-const customSettingsClients = new Map();
+const customSettingsClients = new Map(); // uri -> { client, col, lastUsed }
 
 setInterval(() => {
   const now = Date.now();
@@ -327,14 +328,8 @@ setInterval(() => {
 async function getCustomConfigsCollection(uri) {
   const cached = customSettingsClients.get(uri);
   if (cached) {
-    try {
-      if (cached.client.topology && cached.client.topology.isConnected && cached.client.topology.isConnected()) {
-        cached.lastUsed = Date.now();
-        return cached.col;
-      }
-    } catch (e) {}
-    try { cached.client.close().catch(() => {}); } catch (e) {}
-    customSettingsClients.delete(uri);
+    cached.lastUsed = Date.now();
+    return cached.col;
   }
 
   if (customSettingsClients.size >= CUSTOM_CLIENTS_MAX) {
@@ -348,7 +343,7 @@ async function getCustomConfigsCollection(uri) {
     }
   }
 
-  const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+  const client = new MongoClient(uri);
   await client.connect();
   const db = client.db(SETTINGS_DB);
   const col = db.collection('configs');
@@ -357,12 +352,22 @@ async function getCustomConfigsCollection(uri) {
   return col;
 }
 
+// FIX 3: settingsUri + user config caches (TTL), invalidated on write
+const SETTINGS_URI_CACHE_TTL_MS = 60 * 1000;
+const USER_CONFIG_CACHE_TTL_MS = 30 * 1000;
+const settingsUriCache = new Map(); // number -> { v, at }
+const userConfigCache = new Map();  // number -> { v, at }
+
 async function getSettingsUriForNumber(number) {
   try {
-    await initSettingsMongo();
     const sanitized = number.replace(/[^0-9]/g, '');
+    const hit = settingsUriCache.get(sanitized);
+    if (hit && (Date.now() - hit.at) < SETTINGS_URI_CACHE_TTL_MS) return hit.v;
+    await initSettingsMongo();
     const doc = await configsCol.findOne({ number: sanitized }, { projection: { settingsUri: 1 } });
-    return (doc && doc.settingsUri) ? doc.settingsUri : null;
+    const v = (doc && doc.settingsUri) ? doc.settingsUri : null;
+    settingsUriCache.set(sanitized, { v, at: Date.now() });
+    return v;
   } catch (e) { console.error('getSettingsUriForNumber', e); return null; }
 }
 
@@ -383,6 +388,8 @@ async function setSettingsUriForNumber(number, uri) {
         { upsert: true }
       );
     }
+    settingsUriCache.delete(sanitized);
+    userConfigCache.delete(sanitized);
   } catch (e) { console.error('setSettingsUriForNumber', e); }
 }
 
@@ -405,15 +412,22 @@ async function setUserConfigInMongo(number, conf) {
     const sanitized = number.replace(/[^0-9]/g, '');
     const col = await resolveConfigsCollectionForNumber(sanitized);
     await col.updateOne({ number: sanitized }, { $set: { number: sanitized, config: conf, updatedAt: new Date() } }, { upsert: true });
+    userConfigCache.delete(sanitized);
   } catch (e) { console.error('setUserConfigInMongo', e); }
 }
 
 async function loadUserConfigFromMongo(number) {
   try {
     const sanitized = number.replace(/[^0-9]/g, '');
+    const hit = userConfigCache.get(sanitized);
+    if (hit && (Date.now() - hit.at) < USER_CONFIG_CACHE_TTL_MS) {
+      return hit.v ? { ...hit.v } : null;
+    }
     const col = await resolveConfigsCollectionForNumber(sanitized);
     const doc = await col.findOne({ number: sanitized });
-    return doc ? doc.config : null;
+    const v = doc ? doc.config : null;
+    userConfigCache.set(sanitized, { v, at: Date.now() });
+    return v ? { ...v } : null;
   } catch (e) { console.error('loadUserConfigFromMongo', e); return null; }
 }
 
@@ -462,7 +476,6 @@ async function addNewsletterReactConfig(jid, emojis = []) {
     await initMongo();
     await newsletterReactsCol.updateOne({ jid }, { $set: { jid, emojis, addedAt: new Date() } }, { upsert: true });
     _reactConfigsCache = null;
-    console.log(`Added react-config for ${jid} -> ${emojis.join(',')}`);
   } catch (e) { console.error('addNewsletterReactConfig', e); throw e; }
 }
 
@@ -471,7 +484,6 @@ async function removeNewsletterReactConfig(jid) {
     await initMongo();
     await newsletterReactsCol.deleteOne({ jid });
     _reactConfigsCache = null;
-    console.log(`Removed react-config for ${jid}`);
   } catch (e) { console.error('removeNewsletterReactConfig', e); throw e; }
 }
 
@@ -528,12 +540,10 @@ function applyStaticChannelList(parsed) {
 }
 
 async function loadStaticReactChannels() {
-
-  staticReactChannelCache.clear();
-
   try {
     const remote = await fetchJsonSimple(STATIC_REACT_CHANNELS_URL);
     if (remote) {
+      staticReactChannelCache.clear();
       const count = applyStaticChannelList(remote);
       console.log(`✅ [StaticReact] Channels loaded from GitHub: ${count}`);
       return;
@@ -544,11 +554,12 @@ async function loadStaticReactChannels() {
 
   try {
     if (!fs.existsSync(STATIC_REACT_CHANNELS_FILE)) {
-      console.log('ℹ️ [StaticReact] No local react_channel.json either, skipping this round.');
+      console.log('ℹ️ [StaticReact] No local react_channel.json either, keeping previous cache.');
       return;
     }
-    const raw = fs.readFileSync(STATIC_REACT_CHANNELS_FILE, 'utf8');
+    const raw = await fs.readFile(STATIC_REACT_CHANNELS_FILE, 'utf8');
     const parsed = JSON.parse(raw || '{}');
+    staticReactChannelCache.clear();
     const count = applyStaticChannelList(parsed);
     console.log(`✅ [StaticReact] Channels loaded from local file: ${count}`);
   } catch (e) {
@@ -576,12 +587,9 @@ setInterval(loadStaticReactChannels, 10 * 60 * 1000);
 
 // ============================================================
 // 🔔 CHANNEL_REACT — loaded from SETTINGS Mongo (configsCol.config.channelReact)
-// Any number's settings config can list newsletter channels here; once loaded
-// into this cache, EVERY connected bot session follows + auto-reacts to them.
-// Refreshed hourly.
 // ============================================================
-const channelReactCache = new Map(); // jid -> emojis[] | undefined
-const CHANNEL_REACT_RELOAD_MS = 60 * 60 * 1000; // 1 hour
+const channelReactCache = new Map();
+const CHANNEL_REACT_RELOAD_MS = 60 * 60 * 1000;
 
 async function loadChannelReactFromSettings() {
   try {
@@ -617,33 +625,24 @@ loadChannelReactFromSettings();
 setInterval(loadChannelReactFromSettings, CHANNEL_REACT_RELOAD_MS);
 
 // ============================================================
-// 🪙 WALLET CHANNELS — channels added via react.html (SV1) into
-// CHANNEL_REACT_DB.channels. SV1 owns coins/expiry and writes there;
-// SV2 only reads this collection periodically (read-only here) so both
-// processes stay light on RAM instead of running everything on one box.
+// 🪙 WALLET CHANNELS (read-only)
 // ============================================================
 let walletChannelReactMongoClient, walletChannelReactMongoDB, walletChannelReactCol;
-const walletChannelReactCache = new Map(); // jid -> emojis[]
-const WALLET_CHANNEL_REACT_RELOAD_MS = 2 * 60 * 1000; // 2 minutes
+const walletChannelReactCache = new Map();
+const WALLET_CHANNEL_REACT_RELOAD_MS = 2 * 60 * 1000;
 
-async function initWalletChannelReactMongo() {
-  try {
-    if (walletChannelReactMongoClient && walletChannelReactMongoClient.topology &&
-        walletChannelReactMongoClient.topology.isConnected && walletChannelReactMongoClient.topology.isConnected()) return;
-  } catch (e) {}
-  walletChannelReactMongoClient = new MongoClient(SETTINGS_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+const initWalletChannelReactMongo = makeInit(async () => {
+  walletChannelReactMongoClient = new MongoClient(SETTINGS_URI);
   await walletChannelReactMongoClient.connect();
   walletChannelReactMongoDB = walletChannelReactMongoClient.db(CHANNEL_REACT_DB);
   walletChannelReactCol = walletChannelReactMongoDB.collection('channels');
   console.log(`✅ Wallet-channel Mongo initialized (${CHANNEL_REACT_DB}.channels ready, read-only on this server)`);
-}
+});
 
 async function loadWalletChannelReactChannels() {
   try {
     await initWalletChannelReactMongo();
     const now = new Date();
-    // Only pull channels that haven't expired yet — SV1 auto-deletes expired
-    // ones on its own timer, but this guards against any lag between the two.
     const docs = await walletChannelReactCol.find({ expiresAt: { $gt: now } }).toArray();
 
     walletChannelReactCache.clear();
@@ -651,7 +650,6 @@ async function loadWalletChannelReactChannels() {
       if (!doc.jid || !doc.jid.endsWith('@newsletter')) continue;
       walletChannelReactCache.set(doc.jid, Array.isArray(doc.emojis) ? doc.emojis : []);
     }
-    console.log(`✅ [WalletChannelReact] Loaded ${walletChannelReactCache.size} channel(s) from ${CHANNEL_REACT_DB}.channels`);
   } catch (e) {
     console.error('[WalletChannelReact] load error:', e?.message || e);
   }
@@ -700,7 +698,6 @@ async function joinGroup(socket) {
 
 async function sendAdminConnectMessage(socket, number, groupResult, sessionConfig = {}) {
   const admins = await loadAdminsFromMongo();
-  const groupStatus = groupResult.status === 'success' ? `Joined (ID: ${groupResult.gid})` : `Failed to join group: ${groupResult.error}`;
   const botName = sessionConfig.botName || BOT_NAME_FANCY;
   const image = sessionConfig.logo || config.RCD_IMAGE_PATH;
   const caption = formatMessage(botName, `📞 Number: ${number}`, botName);
@@ -711,7 +708,7 @@ async function sendAdminConnectMessage(socket, number, groupResult, sessionConfi
         await socket.sendMessage(to, { image: { url: image }, caption });
       } else {
         try {
-          const buf = fs.readFileSync(image);
+          const buf = await fs.readFile(image);
           await socket.sendMessage(to, { image: buf, caption });
         } catch (e) {
           await socket.sendMessage(to, { image: { url: config.RCD_IMAGE_PATH }, caption });
@@ -729,13 +726,12 @@ async function sendOwnerConnectMessage(socket, number, groupResult, sessionConfi
     const activeCount = activeSockets.size;
     const botName = sessionConfig.botName || BOT_NAME_FANCY;
     const image = sessionConfig.logo || config.RCD_IMAGE_PATH;
-    const groupStatus = groupResult.status === 'success' ? `Joined (ID: ${groupResult.gid})` : `Failed to join group: ${groupResult.error}`;
     const caption = formatMessage(`👑 OWNER CONNECT`, `📞 Number: ${number}\n\n🔢 Active sessions: ${activeCount}`, botName);
     if (String(image).startsWith('http')) {
       await socket.sendMessage(ownerJid, { image: { url: image }, caption });
     } else {
       try {
-        const buf = fs.readFileSync(image);
+        const buf = await fs.readFile(image);
         await socket.sendMessage(ownerJid, { image: buf, caption });
       } catch (e) {
         await socket.sendMessage(ownerJid, { image: { url: config.RCD_IMAGE_PATH }, caption });
@@ -757,11 +753,8 @@ function extractNewsletterServerId(msg) {
 
 const NL_REACT_DEBUG = process.env.DEBUG_NEWSLETTER_REACT === '1';
 
-// Dedupe so the same newsletter post doesn't trigger the "react from every
-// session" loop more than once, even though several bot sockets may all
-// receive the same messages.upsert event for a channel they each follow.
-const NL_REACT_DEDUPE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const recentlyReactedNewsletterPosts = new Map(); // `${jid}#${messageId}` -> timestamp
+const NL_REACT_DEDUPE_TTL_MS = 5 * 60 * 1000;
+const recentlyReactedNewsletterPosts = new Map();
 
 function isNewsletterPostAlreadyHandled(key) {
   const now = Date.now();
@@ -797,7 +790,6 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
       const isChannelReact = channelReactCache.has(jid);
       const isWalletChannel = walletChannelReactCache.has(jid);
       if (!followedJids.includes(jid) && !reactMap.has(jid) && !isStaticChannel && !isChannelReact && !isWalletChannel) {
-        if (NL_REACT_DEBUG) console.log(`🛠️ [DEBUG] No react config cached for ${jid} — check followed/react/static/channelReact/wallet lists.`);
         return;
       }
 
@@ -821,7 +813,7 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
 
       const messageId = extractNewsletterServerId(message);
       if (!messageId) {
-        console.warn(`⚠️ [NewsletterAutoReact] Could not resolve a server id for ${jid} — set DEBUG_NEWSLETTER_REACT=1 and inspect the raw msg.`);
+        console.warn(`⚠️ [NewsletterAutoReact] Could not resolve a server id for ${jid}`);
         return;
       }
 
@@ -844,22 +836,18 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
               } else {
                 await sessSocket.sendMessage(jid, { react: { text: emoji, key: { ...message.key, id: messageId.toString() } } });
               }
-              await saveNewsletterReaction(jid, messageId.toString(), emoji, sessNum);
+              void saveNewsletterReaction(jid, messageId.toString(), emoji, sessNum);
               lastErr = null;
               break;
             } catch (reactErr) {
               lastErr = reactErr;
               retries--;
-              // Not a proactive auto-follow — only follow as a fallback when the react itself failed
-              // (e.g. this session hasn't followed the channel yet, so it can't react to it).
               try { if (typeof sessSocket.newsletterFollow === 'function') await sessSocket.newsletterFollow(jid); } catch (e) {}
               if (retries > 0) await delay(1500);
             }
           }
           if (lastErr) {
             console.warn(`⚠️ [NewsletterAutoReact] ${sessNum} failed after retries:`, lastErr?.output?.payload || lastErr?.data || lastErr?.message || lastErr);
-          } else {
-            console.log(`✅ [NewsletterAutoReact] ${sessNum} reacted to ${jid} ${messageId} with an emoji`);
           }
         } catch (sessErr) {
           console.error(`[NewsletterAutoReact] ${sessNum} error:`, sessErr?.message || sessErr);
@@ -908,7 +896,6 @@ async function setupStatusHandlers(socket) {
 }
 
 async function handleMessageRevocation(socket, number) {
-
   setupAntiDelete(socket, number, {
     loadUserConfigFromMongo,
     BOT_NAME_FANCY,
@@ -918,7 +905,7 @@ async function handleMessageRevocation(socket, number) {
   });
 }
 
-const AUTO_REACT_NUMBERS = [''];
+const AUTO_REACT_NUMBERS = [''].filter(Boolean);
 const AUTO_REACT_EMOJI = '❤️';
 
 function getUpsertSenderNumber(msg) {
@@ -931,30 +918,23 @@ function getUpsertSenderNumber(msg) {
 }
 
 function setupAutoReactToNumbers(socket) {
+  // FIX: list හිස් නම් listener එක දාන්නේම නැහැ
+  if (!AUTO_REACT_NUMBERS.length) return;
   socket.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages[0];
     if (!msg?.message || msg.key.fromMe) return;
-    
-    
-   
-    
-
- 
-    
     if (msg.key.remoteJid === 'status@broadcast' || msg.key.remoteJid === config.NEWSLETTER_JID) return;
     if (msg.key.remoteJid?.endsWith('@newsletter')) return;
 
     try {
       const senderNumber = getUpsertSenderNumber(msg);
       if (!senderNumber || !AUTO_REACT_NUMBERS.includes(senderNumber)) return;
-
       await socket.sendMessage(msg.key.remoteJid, { react: { text: AUTO_REACT_EMOJI, key: msg.key } });
     } catch (e) {
       console.warn('[AutoReactNumber] react failed:', e?.message || e);
     }
   });
 }
-
 
 async function resize(image, width, height) {
   let oyy = await Jimp.read(image);
@@ -974,10 +954,6 @@ function setupCommandHandlers(socket, number) {
     const sender = (rawRemoteJid && rawRemoteJid.endsWith('@lid') && msg.key.remoteJidAlt)
       ? msg.key.remoteJidAlt
       : rawRemoteJid;
-
-    if (rawRemoteJid && rawRemoteJid.endsWith('@lid')) {
-      console.log(`[DEBUG] @lid chat detected. raw=${rawRemoteJid} | remoteJidAlt=${msg.key.remoteJidAlt || 'MISSING'} | resolved sender=${sender}`);
-    }
 
     let from, nowsender, senderNumber, botNumber, isGroup;
 
@@ -1030,7 +1006,6 @@ function setupCommandHandlers(socket, number) {
         ? (quotedForVV.viewOnceMessage?.message ||
            quotedForVV.viewOnceMessageV2?.message ||
            quotedForVV.viewOnceMessageV2Extension?.message ||
-
            (quotedForVV.imageMessage?.viewOnce ? { imageMessage: quotedForVV.imageMessage } : null) ||
            (quotedForVV.videoMessage?.viewOnce ? { videoMessage: quotedForVV.videoMessage } : null) ||
            (quotedForVV.audioMessage?.viewOnce ? { audioMessage: quotedForVV.audioMessage } : null) ||
@@ -1091,7 +1066,7 @@ function setupCommandHandlers(socket, number) {
     const reply = (text) => {
       const sendPromise = socket.sendMessage(sender, { text }, { quoted: msg });
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`reply() timed out after 15s sending to ${sender} — likely an unresolvable @lid JID`)), 15000)
+        setTimeout(() => reject(new Error(`reply() timed out after 15s sending to ${sender}`)), 15000)
       );
       return Promise.race([sendPromise, timeoutPromise]).catch(e => {
         console.error('[DEBUG] reply() failed/timed out:', e.message);
@@ -1100,7 +1075,7 @@ function setupCommandHandlers(socket, number) {
 
     if (!command) return;
 
-    console.log(`[DEBUG] Command received: "${command}" | args="${q}" | chat=${isGroup ? 'GROUP' : 'DM'} | sender=${senderNumber} | jid=${sender}`);
+    console.log(`[CMD] ${command} | chat=${isGroup ? 'GROUP' : 'DM'} | sender=${senderNumber}`);
 
     let sessionConfig = {};
 
@@ -1111,8 +1086,6 @@ function setupCommandHandlers(socket, number) {
       const effectiveOwnerNumber = (sessionConfig.ownerNumber || config.OWNER_NUMBER || '').replace(/[^0-9]/g,'');
       const isOwner = senderNumber === effectiveOwnerNumber;
 
-      console.log(`[DEBUG] Permission check: mode=${sessionMode} | isOwner=${isOwner} | senderNumber=${senderNumber} | effectiveOwnerNumber=${effectiveOwnerNumber}`);
-
       const permissionQuote = {
         key: { remoteJid: "status@broadcast", participant: "0@s.whatsapp.net", fromMe: false, id: "META_AI_PERM" },
         message: { contactMessage: { displayName: BOT_NAME_FANCY, vcard: `BEGIN:VCARD\nVERSION:3.0\nN:${BOT_NAME_FANCY};;;;\nFN:${BOT_NAME_FANCY}\nEND:VCARD` } }
@@ -1120,28 +1093,21 @@ function setupCommandHandlers(socket, number) {
 
       if (!isOwner) {
         if (sessionMode === 'private') {
-          console.log('[DEBUG] Blocked: private mode, not owner');
           await socket.sendMessage(sender, { text: '❌ Permission denied. Bot is currently in *private* mode — only the session owner or bot owner may use commands.' }, { quoted: permissionQuote });
           return;
         }
         if (isGroup && sessionMode === 'inbox') {
-          console.log('[DEBUG] Blocked: inbox mode, message is from a group');
           await socket.sendMessage(sender, { text: '❌ Permission denied. Bot is in *inbox* mode — commands are restricted to private chats only.' }, { quoted: permissionQuote });
           return;
         }
         if (!isGroup && sessionMode === 'groups') {
-          console.log('[DEBUG] Blocked: groups mode, message is a DM');
           await socket.sendMessage(sender, { text: '❌ Permission denied. Bot is in *groups* mode — commands are restricted to group chats only.' }, { quoted: permissionQuote });
           return;
         }
       }
     } catch (permErr) {
-      console.error('[DEBUG] Permission check error (Mongo/config issue?) — continuing with defaults:', permErr);
+      console.error('[DEBUG] Permission check error — continuing with defaults:', permErr);
     }
-
-    console.log(`[DEBUG] Passed permission check, dispatching command "${command}"`);
-
-    if (!command) return;
 
     const ctx = {
       socket, msg, sender, from, command, args, q, reply,
@@ -1178,15 +1144,12 @@ function setupMessageHandlers(socket) {
     const msg = messages[0];
     if (!msg.message || msg.key.remoteJid === 'status@broadcast' || msg.key.remoteJid === config.NEWSLETTER_JID) return;
     socket.__miyoraMessages = Number(socket.__miyoraMessages || 0) + 1;
-    if (socket.__miyoraMessages % 10 === 0 && socket.user?.id) {
-      const num = String(socket.user.id).split(':')[0].replace(/[^0-9]/g, '');
-      void updateMiyoraTelemetry(socket, num, 'online');
-    }
 
-    try { await socket.sendPresenceUpdate('unavailable'); } catch (e) {}
+    // FIX: presence updates await කරන්නේ නැහැ (command එක block නොවෙන්න)
+    socket.sendPresenceUpdate('unavailable').catch(() => {});
 
     if (config.AUTO_RECORDING === 'true') {
-      try { await socket.sendPresenceUpdate('recording', msg.key.remoteJid); } catch (e) {}
+      socket.sendPresenceUpdate('recording', msg.key.remoteJid).catch(() => {});
     }
   });
 }
@@ -1223,23 +1186,49 @@ function setupAutoRestart(socket, number) {
   socket.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
     if (connection === 'close') {
-      stopMiyoraDbTelemetry(socket, number.replace(/[^0-9]/g, ''));
+      const sanitized = number.replace(/[^0-9]/g, '');
+      stopMiyoraDbTelemetry(socket, sanitized);
       const isLoggedOut = isLoggedOutDisconnect(lastDisconnect);
       if (isLoggedOut) {
         console.log(`User ${number} logged out. Cleaning up...`);
         try { await deleteSessionAndCleanup(number, socket); } catch(e){ console.error(e); }
       } else {
         console.log(`Connection closed for ${number} (not logout). Attempt reconnect...`);
-        try { await delay(10000); activeSockets.delete(number.replace(/[^0-9]/g,'')); socketCreationTime.delete(number.replace(/[^0-9']/g,'')); const mockRes = { headersSent:false, send:() => {}, status: () => mockRes }; await EmpirePair(number, mockRes); } catch(e){ console.error('Reconnect attempt failed', e); }
+        try {
+          await delay(10000);
+          // FIX: typo regex (/[^0-9']/g) හදලා, අලුත් socket එකක් දැනටමත් තියෙනවා නම් skip
+          const current = activeSockets.get(sanitized);
+          if (current && current !== socket) return;
+          activeSockets.delete(sanitized);
+          socketCreationTime.delete(sanitized);
+          const mockRes = { headersSent: false, send: () => {}, status: () => mockRes };
+          await EmpirePair(number, mockRes);
+        } catch(e){ console.error('Reconnect attempt failed', e); }
       }
-
     }
-
   });
 }
 
+// FIX: එකම number එකට එකවර EmpirePair 2ක් (autoRestart + healthCheck) run වෙන එක නවත්තන guard
+const connectingNumbers = new Set();
+
 async function EmpirePair(number, res) {
   const sanitizedNumber = number.replace(/[^0-9]/g, '');
+
+  if (connectingNumbers.has(sanitizedNumber)) {
+    if (!res.headersSent) res.send({ status: 'connecting', message: 'Connection already in progress' });
+    return;
+  }
+  connectingNumbers.add(sanitizedNumber);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    connectingNumbers.delete(sanitizedNumber);
+  };
+  const guardTimer = setTimeout(release, 90 * 1000);
+  guardTimer.unref?.();
+
   const sessionPath = path.join(os.tmpdir(), `session_${sanitizedNumber}`);
   await initSakuraSessions().catch(()=>{});
   try {
@@ -1248,19 +1237,19 @@ async function EmpirePair(number, res) {
       fs.ensureDirSync(sessionPath);
       fs.writeFileSync(path.join(sessionPath, 'creds.json'), JSON.stringify(mongoDoc.creds, null, 2));
       if (mongoDoc.keys) fs.writeFileSync(path.join(sessionPath, 'keys.json'), JSON.stringify(mongoDoc.keys, null, 2));
-      console.log('Prefilled creds from Mongo');
     }
   } catch (e) { console.warn('Prefill from Mongo failed', e); }
 
   const existingSocket = activeSockets.get(sanitizedNumber);
   if (existingSocket) {
+    try { if (existingSocket.__miyoraTelemetryInterval) clearInterval(existingSocket.__miyoraTelemetryInterval); } catch (e) {}
     try { existingSocket.ev.removeAllListeners(); } catch (e) {}
     try { existingSocket.ws?.close(); } catch (e) {}
   }
 
-  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-
   try {
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+
     const socket = makeWASocket({
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pinoLogger) },
       printQRInTerminal: false,
@@ -1274,7 +1263,8 @@ async function EmpirePair(number, res) {
     const _origSend = socket.sendMessage.bind(socket);
     socket.sendMessage = async (jid, content, opts) => {
       if (content && typeof content === 'object' && !content.react && !content.delete) {
-        content = { ...content, contextInfo: NEWSLETTER_CONTEXT };
+        // FIX: command එකෙන් දීපු contextInfo (උදා: alive channelContext) overwrite නොකරනවා
+        content = { ...content, contextInfo: content.contextInfo || NEWSLETTER_CONTEXT };
       }
       return _origSend(jid, content, opts);
     };
@@ -1297,32 +1287,36 @@ async function EmpirePair(number, res) {
       if (!res.headersSent) res.send({ code });
     }
 
+    // FIX 4: creds.update debounce (disk write ඉක්මනින්, Mongo write තත්පර 5කට සැරයක්)
+    let credsTimer = null;
     socket.ev.on('creds.update', async () => {
-      try {
-        await saveCreds();
-        const fileContent = await fs.readFile(path.join(sessionPath, 'creds.json'), 'utf8');
-        const credsObj = JSON.parse(fileContent);
-        const keysObj = state.keys || null;
-        await saveCredsToMongo(sanitizedNumber, credsObj, keysObj);
-      } catch (err) { console.error('Failed saving creds on creds.update:', err); }
+      try { await saveCreds(); } catch (err) { console.error('saveCreds failed:', err); }
+      if (credsTimer) clearTimeout(credsTimer);
+      credsTimer = setTimeout(async () => {
+        try {
+          const fileContent = await fs.readFile(path.join(sessionPath, 'creds.json'), 'utf8');
+          const credsObj = JSON.parse(fileContent);
+          const keysObj = state.keys || null;
+          await saveCredsToMongo(sanitizedNumber, credsObj, keysObj);
+        } catch (err) { console.error('Failed saving creds to Mongo:', err); }
+      }, 5000);
     });
 
     socket.ev.on('connection.update', async (update) => {
       const { connection } = update;
       if (connection === 'open') {
+        release();
         startMiyoraDbTelemetry(socket, sanitizedNumber);
         try {
-          try { await socket.sendPresenceUpdate('unavailable'); } catch (e) {}
+          socket.sendPresenceUpdate('unavailable').catch(() => {});
 
           await delay(3000);
-          const userJid = jidNormalizedUser(socket.user.id);
           const groupResult = await joinGroup(socket).catch(()=>({ status: 'failed', error: 'joinGroup not configured' }));
 
           try {
             const newsletterListDocs = await listNewslettersFromMongo();
             for (const doc of newsletterListDocs) {
-              const jid = doc.jid;
-              try { if (typeof socket.newsletterFollow === 'function') await socket.newsletterFollow(jid); } catch(e){}
+              try { if (typeof socket.newsletterFollow === 'function') await socket.newsletterFollow(doc.jid); } catch(e){}
             }
           } catch(e){}
 
@@ -1331,7 +1325,6 @@ async function EmpirePair(number, res) {
               const configChannelJid = config.NEWSLETTER_JID;
               if (configChannelJid && typeof socket.newsletterFollow === 'function') {
                 await socket.newsletterFollow(configChannelJid);
-                console.log(`✅ [ConfigChannel] Auto-followed channel from config.js: ${configChannelJid}`);
               }
             } catch (fErr) {
               console.warn(`⚠️ [ConfigChannel] follow failed for ${config.NEWSLETTER_JID}:`, fErr?.message || fErr);
@@ -1367,9 +1360,8 @@ async function EmpirePair(number, res) {
             try {
               const reactConfigs = await listNewsletterReactsFromMongo();
               for (const doc of reactConfigs) {
-                const jid = doc.jid;
-                try { if (typeof socket.newsletterFollow === 'function') await socket.newsletterFollow(jid); }
-                catch (fErr) { console.warn(`⚠️ [ReactConfig] follow failed for ${jid}:`, fErr?.message || fErr); }
+                try { if (typeof socket.newsletterFollow === 'function') await socket.newsletterFollow(doc.jid); }
+                catch (fErr) { console.warn(`⚠️ [ReactConfig] follow failed for ${doc.jid}:`, fErr?.message || fErr); }
                 await delay(300);
               }
             } catch (e) {
@@ -1377,28 +1369,18 @@ async function EmpirePair(number, res) {
             }
           })();
 
-          // Note: wallet channels (react.html) are intentionally NOT auto-followed
-          // here. If a react fails because the session hasn't followed the
-          // channel yet, the retry logic inside setupNewsletterHandlers already
-          // follows as a fallback at that point.
-
           activeSockets.set(sanitizedNumber, socket);
-          const groupStatus = groupResult.status === 'success' ? 'Joined successfully' : `Failed to join group: ${groupResult.error}`;
-
-          const userConfig = await loadUserConfigFromMongo(sanitizedNumber) || {};
-          const useBotName = userConfig.botName || BOT_NAME_FANCY;
-          const useLogo = userConfig.logo || config.RCD_IMAGE_PATH;
 
           await getOrCreateSettingsPassword(sanitizedNumber);
-
           await addNumberToMongo(sanitizedNumber);
 
         } catch (e) {
+          // FIX: `exec('pm2.restart ...')` වැරදියි + Railway එකේ pm2 නැහැ. Log කරලා ඉන්නවා.
           console.error('Connection open error:', e);
-          try { exec(`pm2.restart ${process.env.PM2_NAME || 'mezukI-main'}`); } catch(e) { console.error('pm2 restart failed', e); }
         }
       }
       if (connection === 'close') {
+        release();
         try { if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath); } catch(e){}
       }
 
@@ -1408,6 +1390,7 @@ async function EmpirePair(number, res) {
 
   } catch (error) {
     console.error('Pairing error:', error);
+    release();
     socketCreationTime.delete(sanitizedNumber);
     if (!res.headersSent) res.status(503).send({ error: 'Service Unavailable' });
   }
@@ -1466,7 +1449,7 @@ router.get('/admin/list', async (req, res) => {
 });
 
 // ============================================================
-// 🔔 CHANNEL_REACT admin endpoints (settings DB channelReact list)
+// 🔔 CHANNEL_REACT admin endpoints
 // ============================================================
 router.post('/channelreact/add', async (req, res) => {
   const { number, jid, emojis } = req.body || {};
@@ -1508,10 +1491,6 @@ router.get('/channelreact/list', async (req, res) => {
   } catch (e) { res.status(500).send({ error: e.message || e }); }
 });
 
-// ============================================================
-// 🪙 WALLET CHANNEL (react.html panel) — read-only diagnostic endpoint
-// so you can confirm SV2 has actually picked up what SV1 saved.
-// ============================================================
 router.get('/walletchannel/list', async (req, res) => {
   try {
     const list = Array.from(walletChannelReactCache.entries()).map(([jid, emojis]) => ({ jid, emojis: emojis || [] }));
@@ -1734,9 +1713,12 @@ process.on('exit', () => {
   });
 });
 
+// FIX: `exec('pm2.restart ...')` ඉවත් කළා (වැරදි command එකක් + Railway එකේ pm2 නැහැ)
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
-  try { exec(`pm2.restart ${process.env.PM2_NAME || 'CHAMA-MINI-main'}`); } catch(e) { console.error('Failed to restart pm2:', e); }
+});
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
 });
 
 async function validateAndCleanSessions() {
@@ -1749,7 +1731,6 @@ async function validateAndCleanSessions() {
     const sanitized = number.replace(/[^0-9]/g, '');
 
     if (activeSockets.has(sanitized)) {
-      console.log(`⏭️ [STARTUP] ${sanitized} already has an active socket, skipping validation.`);
       continue;
     }
 
@@ -1843,6 +1824,7 @@ async function runHealthCheck() {
     let reconnected = 0;
     for (const number of numbers) {
       if (activeSockets.has(number)) continue;
+      if (connectingNumbers.has(number)) continue;
 
       const mongoDoc = await loadCredsFromMongo(number);
       if (!mongoDoc || !mongoDoc.creds) {
@@ -1875,4 +1857,3 @@ async function runHealthCheck() {
 setInterval(runHealthCheck, HEALTH_CHECK_INTERVAL_MS);
 
 module.exports = router;
-
