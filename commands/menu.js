@@ -90,7 +90,6 @@ module.exports = {
           `❍ *${prefix}ig* ┊ Download Instagram media\n` +
           `❍ *${prefix}mediafire* ┊ Download MediaFire file\n` +
           `❍ *${prefix}image* ┊ Search Google images`
-          `❍*${prefix}url* ┊ Convert quoted link to media\n
       },
       '3': {
         title: '👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ',
@@ -120,7 +119,6 @@ module.exports = {
           `❍ *${prefix}gpt* ┊ Ask from ChatGPT AI\n` +
           `❍ *${prefix}gemini* ┊ Ask from Google Gemini AI\n` +
           `❍ *${prefix}imagine* ┊ Generate AI image\n` +
-          `❍ *${prefix}voice* ┊ Convert text to AI voice note\n
           `📌 *Example:* ${prefix}ai What is quantum physics?`
       },
       '6': {
@@ -193,3 +191,4 @@ module.exports = {
     activeMenus.set(key, { listener, timer });
   }
 };
+ 
