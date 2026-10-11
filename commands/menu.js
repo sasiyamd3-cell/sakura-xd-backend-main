@@ -89,7 +89,8 @@ module.exports = {
           `❍ *${prefix}fb* ┊ Download Facebook video\n` +
           `❍ *${prefix}ig* ┊ Download Instagram media\n` +
           `❍ *${prefix}mediafire* ┊ Download MediaFire file\n` +
-          `❍ *${prefix}image* ┊ Search Google images`
+          `❍ *${prefix}image* ┊ Search Google images\n` +
+          `❍ *${prefix}lyrics* ┊ Find song lyrics`
       },
       '3': {
         title: '👑 ᴏᴡɴᴇʀ ᴍᴇɴᴜ',
@@ -118,6 +119,7 @@ module.exports = {
           `❍ *${prefix}ai* ┊ Chat with AI assistant\n` +
           `❍ *${prefix}gpt* ┊ Ask from ChatGPT AI\n` +
           `❍ *${prefix}gemini* ┊ Ask from Google Gemini AI\n` +
+          `❍ *${prefix}voice* ┊ AI Voice note synthesizer\n` +
           `❍ *${prefix}imagine* ┊ Generate AI image\n` +
           `📌 *Example:* ${prefix}ai What is quantum physics?`
       },
@@ -125,6 +127,13 @@ module.exports = {
         title: '🌙 ᴏᴛʜᴇʀ ᴍᴇɴᴜ',
         body:
           `❍ *${prefix}vv* ┊ Unlock view-once media\n` +
+          `❍ *${prefix}url* ┊ Convert media to web url\n` +
+          `❍ *${prefix}tempmail* ┊ Generate temporary email\n` +
+          `❍ *${prefix}checkmail* ┊ Check tempmail inbox\n` +
+          `❍ *${prefix}tempnumber* ┊ Get virtual phone number\n` +
+          `❍ *${prefix}checksms* ┊ Check virtual number SMS\n` +
+          `❍ *${prefix}ss* ┊ Capture website screenshot\n` +
+          `❍ *${prefix}ip* ┊ IP & Domain network lookup\n` +
           `❍ *${prefix}send* ┊ Send media by url/reply\n` +
           `❍ *${prefix}getpp* ┊ Get a user's profile picture\n` +
           `❍ *${prefix}tts* ┊ Convert text to voice note\n` +
@@ -191,4 +200,3 @@ module.exports = {
     activeMenus.set(key, { listener, timer });
   }
 };
- 
