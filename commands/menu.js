@@ -1,7 +1,7 @@
 // Command: menu (aliases: help, allmenu)
 const { getImageBuffer } = require('../utils/imageCache'); // path එක ඔයාගේ folder structure එකට හදාගන්න
 
-const PAIRING_SITE = 'www.miyora-mini.site';
+const PAIRING_SITE = 'miyora-mini.site';
 const MENU_TIMEOUT_MS = 60000;
 
 // Sub menu එක image එක්කම යවන්නද? false = text විතරයි (ගොඩක් ඉක්මන්)
