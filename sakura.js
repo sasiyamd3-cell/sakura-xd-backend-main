@@ -42,7 +42,7 @@ const {
 } = require('./config');
 
 const SAKURA_DB_URI = config.SAKURA_DB_URI || process.env.SAKURA_DB_URI || MONGO_URI;
-const SAKURA_SESSIONS_DB = process.env.SAKURA_SESSIONS_DB || 'sakuradb-1';
+const SAKURA_SESSIONS_DB = process.env.SAKURA_SESSIONS_DB
 
 // ============================================================
 // FIX 1: Mongo init functions now cache their promise.
