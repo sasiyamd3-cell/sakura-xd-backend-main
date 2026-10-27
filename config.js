@@ -52,7 +52,7 @@ const config = {
 
   MODE: process.env.BOT_MODE || 'public',
 
-  SAKURA_DB_URI: process.env.SAKURA_DB_URI || 'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/',
+  SAKURA_DB_URI: process.env.SAKURA_DB_URI || 'mongodb+srv://ranux:531531@cluster0.elnaxev.mongodb.net/',
   SAKURA_DB_COUNT: process.env.SAKURA_DB_COUNT || 10
 };
 
@@ -69,21 +69,21 @@ const NEWSLETTER_CONTEXT = {
 
 const MONGO_URI =
   process.env.MONGO_URI ||
-  'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
+  'mongodb+srv://ranux:531531@cluster0.elnaxev.mongodb.net/';
 
 const MONGO_DB =
   process.env.MONGO_DB || 'SAKURADB';
 
 const SETTINGS_URI =
   process.env.SETTINGS_URI ||
-  'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
+  'mongodb+srv://ranux:531531@cluster0.elnaxev.mongodb.net/';
 
 const SETTINGS_DB =
   process.env.SETTINGS_DB || 'SETTINGSDB';
 
 const COMMENT_URL =
   process.env.COMMENT_URL ||
-  'mongodb+srv://mrshrii404:JLtbz0CEOC1u6CwS@shri.gkhohrr.mongodb.net/';
+  'mongodb+srv://ranux:531531@cluster0.elnaxev.mongodb.net/';
 
 const COMMENT_DB =
   process.env.COMMENT_DB || 'COMMENTSDB';
