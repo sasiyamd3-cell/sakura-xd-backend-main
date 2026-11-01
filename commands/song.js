@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const VERCEL_API = 'https://song-api-rho.vercel.app';
+const VERCEL_API = 'https://song-api-2.vercel.app';
 
 module.exports = {
   name: 'song',
@@ -28,7 +28,7 @@ module.exports = {
     await socket.sendMessage(sender, { react: { text: '🔍', key: msg.key } }).catch(() => {});
 
     try {
-      // 2. Fetch Direct Audio Buffer from your Vercel Scraper API
+      // 2. Fetch Direct Audio Buffer from your new Vercel API
       const apiResp = await axios.get(`${VERCEL_API}/api/audio?q=${encodeURIComponent(query)}`, {
         responseType: 'arraybuffer',
         timeout: 90000,
