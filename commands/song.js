@@ -1,10 +1,4 @@
 const axios = require('axios');
-const crypto = require('crypto');
-const osModule = require('os');
-const path = require('path');
-const fs = require('fs');
-
-const VERCEL_API = 'https://song-api-3.vercel.app';
 
 module.exports = {
   name: 'song',
@@ -36,16 +30,84 @@ module.exports = {
     await socket.sendMessage(sender, { react: { text: '🔍', key: msg.key } }).catch(() => {});
 
     try {
-      // 2. Fetching from your new Vercel API
-      const apiResp = await axios.get(`${VERCEL_API}/api/audio?q=${encodeURIComponent(songQuery)}`, {
-        responseType: 'arraybuffer',
-        timeout: 90000,
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      });
+      // 2. YouTube එකෙන් සින්දුව සර්ච් කරලා URL එක ලබාගැනීම
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(songQuery + ' audio')}`;
+      const searchRes = await axios.get(searchUrl);
+      const match = searchRes.data.match(/var ytInitialData = ({.*?});<\/script>/);
 
-      const audioBuffer = Buffer.from(apiResp.data);
-      const encodedTitle = apiResp.headers['x-song-title'];
-      const sTitle = encodedTitle ? decodeURIComponent(encodedTitle) : songQuery;
+      if (!match) throw new Error('Search failed');
+      const json = JSON.parse(match[1]);
+      const contents = json.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+
+      let videoId = null;
+      let sTitle = songQuery;
+
+      if (contents) {
+        for (const c of contents) {
+          const items = c.itemSectionRenderer?.contents;
+          if (items) {
+            for (const i of items) {
+              if (i.videoRenderer) {
+                videoId = i.videoRenderer.videoId;
+                sTitle = i.videoRenderer.title?.runs?.[0]?.text || songQuery;
+                break;
+              }
+            }
+          }
+          if (videoId) break;
+        }
+      }
+
+      if (!videoId) throw new Error('Video ID not found');
+      const targetYouTubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+      // 3. CNV.cx ලොජික් එක කෙලින්ම ක්‍රියාත්මක කර ඩවුන්ලෝඩ් ලින්ක් එක ලබා ගැනීම
+      const USER_AGENT = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36';
+      
+      const runCNVFallback = async (targetUrl) => {
+        try {
+          const convertRes = await fetch('https://cnv.cx/v2/converter', {
+            method: 'POST',
+            headers: {
+              'accept': '*/*',
+              'accept-language': 'en-US,en;q=0.9',
+              'content-type': 'application/x-www-form-urlencoded',
+              'key': 'YzdiNDc1MmU0NDNiNDAwYjM0MGZjYWVhNzYxZjg4OWY1ZGYwZWJlNGUzNjMzOTU0Nzc4ZDhiNWE0MzU4OTI5NnxNVGM0TmpVMU16QXlOREEzTXc9PQ==',
+              'origin': 'https://frame.y2meta-uk.com',
+              'referer': 'https://frame.y2meta-uk.com/',
+              'user-agent': USER_AGENT
+            },
+            body: new URLSearchParams({
+              'link': targetUrl,
+              'format': 'mp3',
+              'audioBitrate': '128',
+              'videoQuality': '720',
+              'filenameStyle': 'pretty',
+              'vCodec': 'h264'
+            }).toString()
+          });
+
+          const convertData = await convertRes.json();
+          if (convertData && convertData.url) {
+            return {
+              title: convertData.filename || sTitle,
+              downloadUrl: convertData.url
+            };
+          }
+          return null;
+        } catch (e) {
+          console.error("❌ CNV.cx Error:", e.message);
+          return null;
+        }
+      };
+
+      const cnvResult = await runCNVFallback(targetYouTubeUrl);
+      if (!cnvResult || !cnvResult.downloadUrl) {
+        throw new Error('CNV extraction failed');
+      }
+
+      sTitle = cnvResult.title || sTitle;
+      const downloadUrl = cnvResult.downloadUrl;
 
       await socket.sendMessage(sender, { react: { text: '📥', key: msg.key } }).catch(() => {});
 
@@ -59,7 +121,7 @@ module.exports = {
         }
       };
 
-      // Menu message asking for format (MP3, Voice Note, Document)
+      // 4. Interactive Format Menu (1, 2 හෝ 3 තෝරාගැනීමට)
       const caption = `꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
 
 🎶 *Title* ➜ ${sTitle}
@@ -80,7 +142,7 @@ module.exports = {
 
       await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } }).catch(() => {});
 
-      // 3. Collect User Choice (1, 2 or 3)
+      // 5. User Reply එක (1, 2, හෝ 3) ලබා ගැනීම
       const collected = await new Promise((resolve) => {
         const listener = ({ messages }) => {
           for (const m2 of messages) {
@@ -110,9 +172,17 @@ module.exports = {
 
       const choice = (collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim();
 
-      // 4. Send according to chosen format
+      // 6. Direct Audio Buffer එක Download ලින්ක් එකෙන් ලබා ගැනීම
+      const audioBufferRes = await axios.get(downloadUrl, {
+        responseType: 'arraybuffer',
+        timeout: 90000,
+        headers: { 'User-Agent': USER_AGENT }
+      });
+
+      const audioBuffer = Buffer.from(audioBufferRes.data);
+
+      // 7. තෝරාගත් ආකෘතියට අනුව ෆයිල් එක යැවීම
       if (choice === '1') {
-        // Direct MP3 Audio File
         await socket.sendMessage(sender, {
           audio: audioBuffer,
           mimetype: 'audio/mpeg',
@@ -122,7 +192,6 @@ module.exports = {
         }, { quoted: collected });
 
       } else if (choice === '2') {
-        // Voice Message (PTT)
         await socket.sendMessage(sender, {
           audio: audioBuffer,
           mimetype: 'audio/ogg; codecs=opus',
@@ -131,7 +200,6 @@ module.exports = {
         }, { quoted: collected });
 
       } else if (choice === '3') {
-        // Document File
         await socket.sendMessage(sender, {
           document: audioBuffer,
           mimetype: 'audio/mpeg',
@@ -145,7 +213,7 @@ module.exports = {
     } catch (e) {
       console.error('[song error]:', e.message);
       await socket.sendMessage(sender, {
-        text: `꒰ᵎ ❌ *Error* ᵎ꒱\n\n⚠️ Failed to fetch song from API!\n\n*${botName}* 🖤`
+        text: `꒰ᵎ ❌ *Error* ᵎ꒱\n\n⚠️ Failed to process song download!\n\n*${botName}* 🖤`
       }, { quoted: msg });
     }
   }
