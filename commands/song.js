@@ -6,9 +6,6 @@ const osModule = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
 
-// 100% Working Stable API
-const YT_API = 'https://delirius-apii-oficial.vercel.app/download/ytdl'; // Stable alternative or backup api
-
 module.exports = {
   name: 'song',
   aliases: ['music', 'ytmp3', 'yt'],
@@ -61,26 +58,33 @@ module.exports = {
       const duration = video.timestamp || 'N/A';
       const views = video.views?.toLocaleString() || 'N/A';
 
-      // Fetching Audio/MP3 download link from stable API
+      // Multi-API Fallback Strategy (එකක් ෆේල් වුණොත් අනිත් එකට ට්‍රයි කරයි)
       let sDownloadUrl = null;
-      try {
-        const apiResp = await axios.get(`https://api.siputzx.my.id/api/s/youtube?query=${encodeURIComponent(sUrl)}`, {
-          timeout: 20000
-        });
-        if (apiResp.data?.status && apiResp.data.data?.audio) {
-          sDownloadUrl = apiResp.data.data.audio;
+      const apis = [
+        async () => {
+          const res = await axios.get(`https://api.vreden.web.id/api/ytmp3?url=${encodeURIComponent(sUrl)}`, { timeout: 15000 });
+          return res.data?.result?.download?.url || res.data?.result?.url;
+        },
+        async () => {
+          const res = await axios.get(`https://delirius-apii-oficial.vercel.app/download/ytmp3?url=${encodeURIComponent(sUrl)}`, { timeout: 15000 });
+          return res.data?.data?.download?.url;
+        },
+        async () => {
+          const res = await axios.get(`https://api.siputzx.my.id/api/s/youtube?query=${encodeURIComponent(sUrl)}`, { timeout: 15000 });
+          return res.data?.data?.audio;
+        },
+        async () => {
+          const res = await axios.get(`https://widipe.com/download/ytmp3?url=${encodeURIComponent(sUrl)}`, { timeout: 15000 });
+          return res.data?.result?.audio || res.data?.result?.download?.url;
         }
-      } catch (e1) {
-        // Fallback API if first fails
+      ];
+
+      for (const apiFn of apis) {
         try {
-          const backupResp = await axios.get(`https://delirius-apii-oficial.vercel.app/download/ytmp3?url=${encodeURIComponent(sUrl)}`, {
-            timeout: 20000
-          });
-          if (backupResp.data?.status && backupResp.data.data?.download?.url) {
-            sDownloadUrl = backupResp.data.data.download.url;
-          }
-        } catch (e2) {
-          console.log('[song] All APIs failed:', e2.message);
+          sDownloadUrl = await apiFn();
+          if (sDownloadUrl) break;
+        } catch (err) {
+          continue; // Try next API
         }
       }
 
@@ -129,7 +133,6 @@ module.exports = {
         react: { text: '✅', key: msg.key }
       }).catch(() => {});
 
-      // Wait for user reply (1, 2, or 3)
       const collected = await new Promise((resolve) => {
         const listener = ({ messages }) => {
           for (const m2 of messages) {
@@ -163,9 +166,6 @@ module.exports = {
       await socket.sendMessage(sender, {
         text: `꒰ᵎ 📥 *Downloading* ᵎ꒱\n\n⏳ Processing *${formatLabel}*...\n🎶 *${sTitle}*\n\n*${botName}* 🖤`
       }, { quoted: collected });
-
-      const _id = crypto.randomBytes(8).toString('hex');
-      const tmpAudio = path.join(osModule.tmpdir(), `song_${_id}.mp3`);
 
       const dlResp = await axios.get(sDownloadUrl, {
         responseType: 'arraybuffer',
