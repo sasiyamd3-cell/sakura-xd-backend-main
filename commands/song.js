@@ -1,5 +1,7 @@
 const axios = require('axios');
 
+const VERCEL_API = 'https://sasindaapi-api-mini.vercel.app'; // උඹේ Vercel API එක
+
 module.exports = {
   name: 'song',
   aliases: ['music', 'ytmp3', 'yt'],
@@ -14,9 +16,9 @@ module.exports = {
 
     if (!songQuery) {
       return await socket.sendMessage(sender, {
-        text: `꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
+        text: `꒰ᵎ 🎵 *Ytmp3 Song Downloader* ᵎ꒱
 
-⚠️ Please provide a song name!
+⚠️ Please provide a song name or YouTube link!
 
 📌 *Usage:* ${prefix}song <song name>
 📌 *Example:* ${prefix}song Manike Mage Hithe
@@ -30,7 +32,7 @@ module.exports = {
     await socket.sendMessage(sender, { react: { text: '🔍', key: msg.key } }).catch(() => {});
 
     try {
-      // 2. YouTube එකෙන් සින්දුව සර්ච් කරලා URL එක ලබාගැනීම
+      // 2. YouTube Search මඟින් සින්දුවේ URL එක ලබාගැනීම
       const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(songQuery + ' audio')}`;
       const searchRes = await axios.get(searchUrl);
       const match = searchRes.data.match(/var ytInitialData = ({.*?});<\/script>/);
@@ -61,53 +63,17 @@ module.exports = {
       if (!videoId) throw new Error('Video ID not found');
       const targetYouTubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-      // 3. CNV.cx ලොජික් එක කෙලින්ම ක්‍රියාත්මක කර ඩවුන්ලෝඩ් ලින්ක් එක ලබා ගැනීම
-      const USER_AGENT = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36';
-      
-      const runCNVFallback = async (targetUrl) => {
-        try {
-          const convertRes = await fetch('https://cnv.cx/v2/converter', {
-            method: 'POST',
-            headers: {
-              'accept': '*/*',
-              'accept-language': 'en-US,en;q=0.9',
-              'content-type': 'application/x-www-form-urlencoded',
-              'key': 'YzdiNDc1MmU0NDNiNDAwYjM0MGZjYWVhNzYxZjg4OWY1ZGYwZWJlNGUzNjMzOTU0Nzc4ZDhiNWE0MzU4OTI5NnxNVGM0TmpVMU16QXlOREEzTXc9PQ==',
-              'origin': 'https://frame.y2meta-uk.com',
-              'referer': 'https://frame.y2meta-uk.com/',
-              'user-agent': USER_AGENT
-            },
-            body: new URLSearchParams({
-              'link': targetUrl,
-              'format': 'mp3',
-              'audioBitrate': '128',
-              'videoQuality': '720',
-              'filenameStyle': 'pretty',
-              'vCodec': 'h264'
-            }).toString()
-          });
+      // 3. Vercel API එකට කෝල් කර ඩවුන්ලෝඩ් ලින්ක් එක ලබා ගැනීම
+      const apiResp = await axios.get(`${VERCEL_API}/api/download/yt?url=${encodeURIComponent(targetYouTubeUrl)}`, {
+        timeout: 45000
+      });
 
-          const convertData = await convertRes.json();
-          if (convertData && convertData.url) {
-            return {
-              title: convertData.filename || sTitle,
-              downloadUrl: convertData.url
-            };
-          }
-          return null;
-        } catch (e) {
-          console.error("❌ CNV.cx Error:", e.message);
-          return null;
-        }
-      };
-
-      const cnvResult = await runCNVFallback(targetYouTubeUrl);
-      if (!cnvResult || !cnvResult.downloadUrl) {
-        throw new Error('CNV extraction failed');
+      if (!apiResp.data || !apiResp.data.downloadUrl) {
+        throw new Error('Download URL extraction failed from Vercel API');
       }
 
-      sTitle = cnvResult.title || sTitle;
-      const downloadUrl = cnvResult.downloadUrl;
+      sTitle = apiResp.data.title || sTitle;
+      const downloadUrl = apiResp.data.downloadUrl;
 
       await socket.sendMessage(sender, { react: { text: '📥', key: msg.key } }).catch(() => {});
 
@@ -122,15 +88,15 @@ module.exports = {
       };
 
       // 4. Interactive Format Menu (1, 2 හෝ 3 තෝරාගැනීමට)
-      const caption = `꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
+      const caption = `꒰ᵎ 🎵 *Ytmp3 Downloader* ᵎ꒱
 
 🎶 *Title* ➜ ${sTitle}
 
 ✨ *Select your format!*
 
 　1️⃣ ➜ 🎵 MP3 File
-　2️⃣ ➜ 🎤 Voice Message
-　3️⃣ ➜ 📄 Document
+　2️⃣ ➜ 🎤 Voice Message (PTT)
+　3️⃣ <span>➜</span> 📄 Document
 
 　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
 > 💬 *Reply 1, 2 or 3* 👆`;
@@ -142,7 +108,7 @@ module.exports = {
 
       await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } }).catch(() => {});
 
-      // 5. User Reply එක (1, 2, හෝ 3) ලබා ගැනීම
+      // 5. User Reply එක (1, 2, හෝ 3) ලබා ගැනීම සඳහා Listener එකක්
       const collected = await new Promise((resolve) => {
         const listener = ({ messages }) => {
           for (const m2 of messages) {
@@ -176,7 +142,7 @@ module.exports = {
       const audioBufferRes = await axios.get(downloadUrl, {
         responseType: 'arraybuffer',
         timeout: 90000,
-        headers: { 'User-Agent': USER_AGENT }
+        headers: { 'User-Agent': 'Mozilla/5.0' }
       });
 
       const audioBuffer = Buffer.from(audioBufferRes.data);
