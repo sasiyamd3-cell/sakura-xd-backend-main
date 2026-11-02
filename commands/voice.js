@@ -1,19 +1,52 @@
-// Command: voice (aliases: tts, speak, aivoice)
-// Advanced Text-to-Speech & Custom Audio Synthesizer Module
+const axios = require('axios');
+
+const AUDIO_URL = 'https://mp3tourl.com/audio/1793614308201-17329790-6d74-4f2e-aa77-f0c274d62703.opus';
+
 module.exports = {
-  name: 'voice',
-  aliases: ['tts', 'speak', 'aivoice'],
+  name: 'autovoice',
   async execute(ctx) {
-    const {
-      socket, msg, sender, from, command, args, q, reply,
-      sessionConfig, number, prefix, config, BOT_NAME_FANCY,
-      NEWSLETTER_CONTEXT, resolveReplyJid, fs, path, os
-    } = ctx;
+    const { socket, msg, sender, args, body, sessionConfig, BOT_NAME_FANCY, NEWSLETTER_CONTEXT } = ctx;
 
-      const cfg = sessionConfig; 
-      const botName = cfg.botName || BOT_NAME_FANCY;
+    const botName = sessionConfig?.botName || BOT_NAME_FANCY || 'MIYORA-MD';
 
-      const channelContext = {
+    // මැසේජ් ටෙක්ස්ට් එක ගෘප් හෝ ප්‍රයිවට් ඕනෑම තැනක සිට නිවැරදිව ලබා ගැනීම
+    const textBody = (
+      body ||
+      args.join(" ") ||
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      msg.message?.videoMessage?.caption ||
+      ''
+    ).toLowerCase().trim();
+
+    const keywords = [
+      'mk',
+      'මොකද කරන්නෙ', 'මොකද කරන්නේ', 'මොකද වෙන්නෙ', 'මොකද වෙන්නේ',
+      'mokada karanne', 'mokada wenne', 'what are you doing', 'what happens',
+      'என்ன பண்றீங்க', 'என்ன நடக்குது'
+    ];
+
+    const isMatched = keywords.some(keyword => textBody.includes(keyword));
+    if (!isMatched) return;
+
+    try {
+      // 1. මයික් රියැක්ට් දැමීම (ਗෘප් එකේදී කන්ටෙක්ට් එකටම රියැක්ට් වේ)
+      await socket.sendMessage(sender, { react: { text: '🎙️', key: msg.key } }).catch(() => {});
+
+      console.log('🔄 [AutoVoice Group/Private] Downloading audio from URL...');
+      const response = await axios.get(AUDIO_URL, {
+        responseType: 'arraybuffer',
+        timeout: 20000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+
+      const audioBuffer = Buffer.from(response.data);
+      console.log('✅ [AutoVoice] Audio buffer ready, sending to:', sender);
+
+      const nlCtx = {
         forwardingScore: 1,
         isForwarded: true,
         forwardedNewsletterMessageInfo: {
@@ -23,93 +56,20 @@ module.exports = {
         }
       };
 
-      // ටෙක්ස්ට් එකක් දීලා නැත්නම් හෝ මැසේජ් එකක් කෝට් කරලා නැත්නම්
-      let textToSpeak = q.trim();
-      const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-      
-      if (!textToSpeak && quoted) {
-        textToSpeak = quoted.conversation || quoted.extendedTextMessage?.text || '';
-      }
-
-      if (!textToSpeak) {
-        return reply(`꒰ᵎ 🎙️ *AI Voice Synthesizer* ᵎ꒱
-
-    ⚠️ Please provide text or reply to a message to convert into a voice note!
-
-    📌 *Usage:* ${prefix}voice Hello darling, welcome to our bot!
-    📌 *Or reply to any text message with:* ${prefix}voice
-
-    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-    *${botName}* 🖤`);
-      }
-
+      // 2. WhatsApp Voice Note (PTT) එක ගෘප් එකට හෝ චැට් එකට යැවීම
       await socket.sendMessage(sender, {
-        react: { text: '🎙️', key: msg.key }
-      });
+        audio: audioBuffer,
+        mimetype: 'audio/ogg; codecs=opus',
+        ptt: true,
+        contextInfo: nlCtx
+      }, { quoted: msg });
 
-      try {
-        const axios = require('axios');
-        const crypto = require('crypto');
-        const ffmpeg = require('fluent-ffmpeg');
-        const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
-        ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+      await socket.sendMessage(sender, { react: { text: '🔊', key: msg.key } }).catch(() => {});
 
-        // Google TTS API හෝ ස්මාර්ට් ස්පීච් සර්විස් එක පාවිච්චි කරමින් ඕඩියෝ ස්ට්‍රීම් එක ලබා ගැනීම
-        // (සිංහල සහ ඉංග්‍රීසි භාෂා දෙකටම මරුට වැඩ කරයි)
-        const lang = /[\u0D80-\u0DFF]/.test(textToSpeak) ? 'si' : 'en'; // සිංහල අකුරු ඇත්නම් si නැත්නම් en
-        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(textToSpeak)}&tl=${lang}&client=tw-ob`;
-
-        const response = await axios.get(ttsUrl, {
-          responseType: 'arraybuffer',
-          timeout: 30000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-          }
-        });
-
-        const _id = crypto.randomBytes(6).toString('hex');
-        const mp3Path = path.join(os.tmpdir(), `tts_${_id}.mp3`);
-        const opusPath = path.join(os.tmpdir(), `tts_${_id}.opus`);
-
-        fs.writeFileSync(mp3Path, Buffer.from(response.data));
-
-        // MP3 එක WhatsApp PTT (Voice Note) Opus ෆෝමැට් එකට කන්වට් කිරීම
-        await new Promise((resolve, reject) => {
-          ffmpeg(mp3Path)
-            .noVideo()
-            .audioCodec('libopus')
-            .format('opus')
-            .on('end', resolve)
-            .on('error', reject)
-            .save(opusPath);
-        });
-
-        const opusBuffer = fs.readFileSync(opusPath);
-
-        await socket.sendMessage(sender, {
-          audio: opusBuffer,
-          mimetype: 'audio/ogg; codecs=opus',
-          ptt: true, // true දැමීමෙන් WhatsApp Voice Note එකක් ලෙස ප්ලේ වේ
-          contextInfo: channelContext
-        }, { quoted: msg });
-
-        await socket.sendMessage(sender, {
-          react: { text: '✨', key: msg.key }
-        });
-
-        // තාවකාලික ෆයිල් ඉවත් කිරීම (Cleanup)
-        try {
-          if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path);
-          if (fs.existsSync(opusPath)) fs.unlinkSync(opusPath);
-        } catch (e) {}
-
-      } catch (error) {
-        console.error('[voice] Error:', error.message);
-        await socket.sendMessage(sender, {
-          react: { text: '❌', key: msg.key }
-        });
-        return reply(`꒰ᵎ ❌ *Error* ᵎ꒱\n\n⚠️ Failed to synthesize voice note!\n\n_Reason: ${error.message}_\n\n*${botName}* 🖤`);
-      }
-
+    } catch (e) {
+      console.error('❌ [AutoVoice Error Details]:', e.message);
+      
+      // ගෘප් වලදී බ්ලොක් නොවී ටර්මිනල් එකේ එරර් එක පෙන්වනු ඇත
+    }
   }
 };
