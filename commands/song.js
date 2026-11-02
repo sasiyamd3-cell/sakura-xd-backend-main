@@ -1,161 +1,172 @@
-const axios = require('axios');
-
+// Command: song (aliases: music, ytmp3, yt)
+// Auto-extracted from sakura.js switch-case during commandLoader refactor.
 module.exports = {
   name: 'song',
   aliases: ['music', 'ytmp3', 'yt'],
   async execute(ctx) {
     const {
-      socket, msg, sender, args, prefix,
-      sessionConfig, BOT_NAME_FANCY, NEWSLETTER_CONTEXT, resolveReplyJid
+      socket, msg, sender, from, command, args, q, reply,
+      sessionConfig, number, prefix, config, BOT_NAME_FANCY,
+      NEWSLETTER_CONTEXT, resolveReplyJid, downloadQuotedMedia,
+      getSriLankaTimestamp, formatMessage, os
     } = ctx;
 
-    const botName = sessionConfig?.botName || BOT_NAME_FANCY || 'MIYORA-MD';
-    const songQuery = args.join(" ").trim();
+      const yts    = require('yt-search');
+      const axios  = require('axios');
+      const ffmpeg = require('fluent-ffmpeg');
+      const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+      const path   = require('path');
+      const osModule = require('os');
+      const fs     = require('fs');
+      const crypto = require('crypto');
 
-    if (!songQuery) {
-      return await socket.sendMessage(sender, {
-        text: `꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
+      ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-⚠️ Please provide a song name!
+      const sanitized = (number || '').replace(/[^0-9]/g, '');
+      const cfg = sessionConfig; // reused from top of handler (was: extra Mongo query per command)
+      const botName = cfg.botName || BOT_NAME_FANCY;
 
-📌 *Usage:* ${prefix}song <song name>
-📌 *Example:* ${prefix}song Manike Mage Hithe
+      const YT_API     = 'https://mr-thinuzz-api-build.vercel.app/api/ytmp3/download';
+      const YT_API_KEY = 'key_6c38f6ff3c678b114a98e98af4b3240c';
 
-  ˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤`
-      }, { quoted: msg });
-    }
+      const songQuery = args.join(" ").trim();
 
-    // 1. Searching React
-    await socket.sendMessage(sender, { react: { text: '🔍', key: msg.key } }).catch(() => {});
+      if (!songQuery) {
+        return reply(`꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
 
-    try {
-      // 2. YouTube Search මඟින් සින්දුවේ URL එක ලබාගැනීම
-      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(songQuery + ' audio')}`;
-      const searchRes = await axios.get(searchUrl);
-      const match = searchRes.data.match(/var ytInitialData = ({.*?});<\/script>/);
+    ⚠️ Please provide a song name!
 
-      if (!match) throw new Error('Search failed');
-      const json = JSON.parse(match[1]);
-      const contents = json.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+    📌 *Usage:* ${prefix}song <song name>
+    📌 *Example:* ${prefix}song Shape of You
 
-      let videoId = null;
-      let sTitle = songQuery;
-
-      if (contents) {
-        for (const c of contents) {
-          const items = c.itemSectionRenderer?.contents;
-          if (items) {
-            for (const i of items) {
-              if (i.videoRenderer) {
-                videoId = i.videoRenderer.videoId;
-                sTitle = i.videoRenderer.title?.runs?.[0]?.text || songQuery;
-                break;
-              }
-            }
-          }
-          if (videoId) break;
-        }
+    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+    *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
       }
 
-      if (!videoId) throw new Error('Video ID not found');
-      const targetYouTubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      await socket.sendMessage(sender, {
+        react: { text: '🔍', key: msg.key }
+      });
 
-      // 3. Multi-Source Fallback Engine (කෙලින්ම බොට් එක ඇතුළෙන්ම ක්‍රියාත්මක වේ)
-      let downloadUrl = null;
-      const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+      const search = await yts(songQuery);
+      if (!search?.videos?.length) {
+        return reply(`꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
 
-      // Method 1: SaveNow
+    ❌ No results found for *${songQuery}*!
+
+    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+    *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
+      }
+
+      const video    = search.videos[0];
+      const sUrl     = video.url;
+      const sMetadata = video;
+
+      const videoId  = sUrl.split('v=')[1]?.split('&')[0] || sUrl.split('youtu.be/')[1]?.split('?')[0];
+      const thumbUrl = videoId
+        ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
+        : sMetadata.thumbnail;
+
+      let sDownloadUrl = null;
+      let sTitle       = sMetadata.title || 'Song';
+
       try {
-        const res1 = await fetch('https://p.savenow.to/v1/convert', {
-          method: 'POST',
-          headers: { 'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://en.savefrom.net', 'referer': 'https://en.savefrom.net/', 'user-agent': USER_AGENT },
-          body: JSON.stringify({ url: targetYouTubeUrl })
+        const apiResp = await axios.get(`${YT_API}?url=${encodeURIComponent(sUrl)}&apiKey=${YT_API_KEY}`, {
+          timeout: 30000,
+          headers: { 'User-Agent': 'Mozilla/5.0' }
         });
-        const data1 = await res1.json();
-        if (data1 && data1.url) {
-          downloadUrl = data1.url;
-          sTitle = data1.title || sTitle;
+        const resData = apiResp.data;
+        if (resData && (resData.status || resData.success)) {
+          const data      = resData.data || resData.result || resData;
+          const downloads = data.downloads || resData.downloads;
+          const dlLinks   = data.download_links || resData.download_links || (Array.isArray(downloads) ? downloads : null);
+
+          const isDirectUrl = (u) => typeof u === 'string' && u.startsWith('http') && !/youtube\.com\/watch|youtu\.be\//i.test(u);
+
+          const fromObj = (downloads && typeof downloads === 'object' && !Array.isArray(downloads))
+            ? [downloads.mp3, downloads.audio, downloads.url, downloads.hd, downloads.sd, ...Object.values(downloads)].find(isDirectUrl)
+            : (isDirectUrl(downloads) ? downloads : null);
+
+          const fromArr = Array.isArray(dlLinks)
+            ? dlLinks.map(item => (typeof item === 'string' ? item : item?.url || item?.download || item?.link)).find(isDirectUrl)
+            : null;
+
+          sDownloadUrl = [
+            data.downloadUrl,
+            data.download_url,
+            data.dl_link,
+            data.dlink,
+            data.mp3,
+            data.audio,
+            resData.downloadUrl,
+            resData.download_url,
+            resData.dl_link,
+            resData.dlink,
+            resData.mp3,
+            resData.audio,
+            fromObj,
+            fromArr,
+            data.link,
+            resData.link,
+            data.url,
+            resData.url
+          ].find(isDirectUrl) || null;
+
+          sTitle = data.title || resData.title || sTitle;
         }
-      } catch (e1) {}
-
-      // Method 2: CNV.cx Fallback
-      if (!downloadUrl) {
-        try {
-          const res2 = await fetch('https://cnv.cx/v2/converter', {
-            method: 'POST',
-            headers: { 'accept': '*/*', 'content-type': 'application/x-www-form-urlencoded', 'origin': 'https://frame.y2meta-uk.com', 'referer': 'https://frame.y2meta-uk.com/', 'user-agent': USER_AGENT },
-            body: new URLSearchParams({ 'link': targetYouTubeUrl, 'format': 'mp3', 'audioBitrate': '128', 'videoQuality': '720', 'filenameStyle': 'pretty', 'vCodec': 'h264' }).toString()
-          });
-          const data2 = await res2.json();
-          if (data2 && data2.url) {
-            downloadUrl = data2.url;
-            sTitle = data2.filename || sTitle;
-          }
-        } catch (e2) {}
+      } catch (e) {
+        console.log('[song] API error:', e.message);
       }
 
-      // Method 3: Cobalt Fallback
-      if (!downloadUrl) {
-        try {
-          const res3 = await fetch('https://co.wuk.sh/api/json', {
-            method: 'POST',
-            headers: { 'accept': 'application/json', 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0' },
-            body: JSON.stringify({ url: targetYouTubeUrl, isAudioOnly: true, dubLang: false })
-          });
-          const data3 = await res3.json();
-          if (data3 && data3.url) {
-            downloadUrl = data3.url;
-            sTitle = data3.filename || sTitle;
-          }
-        } catch (e3) {}
+      if (!sDownloadUrl) {
+        return reply(`꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
+
+    ❌ Download failed! API unavailable.
+
+    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+    *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
       }
 
-      if (!downloadUrl) {
-        throw new Error('All download backends failed');
-      }
-
-      await socket.sendMessage(sender, { react: { text: '📥', key: msg.key } }).catch(() => {});
-
-      const nlCtx = {
-        forwardingScore: 1,
-        isForwarded: true,
-        forwardedNewsletterMessageInfo: {
-          newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
-          newsletterName: botName,
-          serverMessageId: 999,
-        }
-      };
-
-      // 4. Interactive Format Menu (1, 2 හෝ 3 තෝරාගැනීමට)
       const caption = `꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
 
-🎶 *Title* ➜ ${sTitle}
+    🎶 *Title* ➜ ${sTitle}
+    ⏱️ *Duration* ➜ ${sMetadata.timestamp || 'N/A'}
+    👁️ *Views* ➜ ${sMetadata.views?.toLocaleString() || 'N/A'}
+    🔗 *URL* ➜ ${sUrl}
 
-✨ *Select your format!*
+    ✨ *Select your format!*
 
- 1️⃣ ➜ 🎵 MP3 File
- 2️⃣ ➜ 🎤 Voice Message
- 3️⃣ ➜ 📄 Document
+    　1️⃣ ➜ 🎵 MP3 File
+    　2️⃣ ➜ 🎤 Voice Message
+    　3️⃣ ➜ 📄 Document
 
-  ˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-> 💬 *Reply 1, 2 or 3* 👆`;
+    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+    > 💬 *Reply 1, 2 or 3* 👆`;
 
       const sentMsg = await socket.sendMessage(sender, {
-        text: caption,
-        contextInfo: nlCtx
+        image: { url: thumbUrl },
+        caption,
+        contextInfo: {
+          forwardingScore: 1,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
+            newsletterName: botName,
+            serverMessageId: 999,
+          }
+        }
       }, { quoted: msg });
 
-      await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } }).catch(() => {});
+      await socket.sendMessage(sender, {
+        react: { text: '✅', key: msg.key }
+      });
 
-      // 5. User Reply එක (1, 2, හෝ 3) ලබා ගැනීම
       const collected = await new Promise((resolve) => {
         const listener = ({ messages }) => {
           for (const m2 of messages) {
-            const isReply = m2.message?.extendedTextMessage?.contextInfo?.stanzaId === sentMsg.key.id;
-            const text = (m2.message?.conversation || m2.message?.extendedTextMessage?.text || '').trim();
-            const isValid = ['1', '2', '3'].includes(text);
-            const isSame = resolveReplyJid(m2) === sender;
+            const isReply  = m2.message?.extendedTextMessage?.contextInfo?.stanzaId === sentMsg.key.id;
+            const text     = (m2.message?.conversation || m2.message?.extendedTextMessage?.text || '').trim();
+            const isValid  = ['1', '2', '3'].includes(text);
+            const isSame   = resolveReplyJid(m2) === sender;
             if (isReply && isValid && isSame) {
               clearTimeout(timeout);
               socket.ev.off('messages.upsert', listener);
@@ -171,56 +182,138 @@ module.exports = {
       });
 
       if (!collected) {
-        return await socket.sendMessage(sender, {
-          text: `꒰ᵎ ⏰ *Time Out* ᵎ꒱\n\n⌛ 60 seconds expired! Please use *${prefix}song* again 🌸\n\n*${botName}* 🖤`
+        return socket.sendMessage(sender, {
+          text: `꒰ᵎ ⏰ *Time Out* ᵎ꒱
+
+    ⌛ 60 seconds expired!
+
+    > Please use *${prefix}song* command again 🌸
+
+    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+    *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`
         }, { quoted: sentMsg });
       }
 
-      const choice = (collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim();
+      const choice      = (collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim();
+      const formatLabel = choice === '1' ? 'MP3 🎵' : choice === '2' ? 'Voice Message 🎤' : 'Document 📄';
 
-      // 6. Direct Audio Buffer ලබා ගැනීම
-      const audioBufferRes = await axios.get(downloadUrl, {
-        responseType: 'arraybuffer',
-        timeout: 90000,
-        headers: { 'User-Agent': USER_AGENT }
-      });
+      await socket.sendMessage(sender, {
+        text: `꒰ᵎ 📥 *Downloading* ᵎ꒱
 
-      const audioBuffer = Buffer.from(audioBufferRes.data);
+    ⏳ Processing *${formatLabel}*...
+    🎶 *${sTitle}*
 
-      // 7. තෝරාගත් ආකෘතියට අනුව යැවීම
-      if (choice === '1') {
+    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚`
+      }, { quoted: collected });
+
+      const _id    = crypto.randomBytes(8).toString('hex');
+      const tmpMp3  = path.join(osModule.tmpdir(), `song_${_id}.mp3`);
+      const tmpTag  = path.join(osModule.tmpdir(), `tag_${_id}.mp3`);
+      const tmpOpus = path.join(osModule.tmpdir(), `song_${_id}.opus`);
+      const tmpOut  = path.join(osModule.tmpdir(), `song_out_${_id}.mp3`);
+
+      try {
+        const dlResp = await axios.get(sDownloadUrl, {
+          responseType: 'stream',
+          timeout: 120000,
+          headers: { 'User-Agent': 'Mozilla/5.0' }
+        }).catch(() => null);
+
+        if (!dlResp?.data) {
+          return socket.sendMessage(sender, {
+            text: `꒰ᵎ ❌ *Error* ᵎ꒱\n\n⚠️ Download failed!\n\n*${botName}* 🖤`
+          }, { quoted: collected });
+        }
+
+        await new Promise((resolve, reject) => {
+          const writer = fs.createWriteStream(tmpMp3);
+          dlResp.data.pipe(writer);
+          writer.on('finish', resolve);
+          writer.on('error', reject);
+        });
+
+        try {
+          const tagText  = `Powered by ${botName}`;
+          const sTagUrl  = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(tagText)}&tl=en&client=tw-ob`;
+          const tagResp  = await axios.get(sTagUrl, { responseType: 'stream' }).catch(() => null);
+          if (tagResp) {
+            await new Promise((resolve) => {
+              const writer = fs.createWriteStream(tmpTag);
+              tagResp.data.pipe(writer);
+              writer.on('finish', resolve);
+              writer.on('error', () => resolve());
+            });
+          }
+        } catch (e) {}
+
+        const mixWithWatermark = (inputFile, outputFile, format, codec) => {
+          return new Promise((resolve, reject) => {
+            let ff = ffmpeg(inputFile).noVideo();
+            if (fs.existsSync(tmpTag)) {
+              ff.input(tmpTag).complexFilter([
+                '[1:a]adelay=1000|1000,volume=2.0[tag]',
+                '[0:a][tag]amix=inputs=2:duration=first'
+              ]);
+            }
+            ff.audioCodec(codec)
+              .format(format)
+              .on('end', resolve)
+              .on('error', reject)
+              .save(outputFile);
+          });
+        };
+
+        const nlCtx = {
+          forwardingScore: 1,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
+            newsletterName: botName,
+            serverMessageId: 999,
+          }
+        };
+
+        if (choice === '1') {
+          await mixWithWatermark(tmpMp3, tmpOut, 'mp3', 'libmp3lame');
+          const buf = fs.readFileSync(tmpOut);
+          await socket.sendMessage(sender, {
+            audio: buf,
+            mimetype: 'audio/mpeg',
+            fileName: `${sTitle}.mp3`,
+            ptt: false,
+            contextInfo: nlCtx
+          }, { quoted: collected });
+
+        } else if (choice === '2') {
+          await mixWithWatermark(tmpMp3, tmpOpus, 'opus', 'libopus');
+          const buf = fs.readFileSync(tmpOpus);
+          await socket.sendMessage(sender, {
+            audio: buf,
+            mimetype: 'audio/ogg; codecs=opus',
+            ptt: true,
+            contextInfo: nlCtx
+          }, { quoted: collected });
+
+        } else if (choice === '3') {
+          await mixWithWatermark(tmpMp3, tmpOut, 'mp3', 'libmp3lame');
+          const buf = fs.readFileSync(tmpOut);
+          await socket.sendMessage(sender, {
+            document: buf,
+            mimetype: 'audio/mpeg',
+            fileName: `${sTitle}.mp3`,
+            contextInfo: nlCtx
+          }, { quoted: collected });
+        }
+
         await socket.sendMessage(sender, {
-          audio: audioBuffer,
-          mimetype: 'audio/mpeg',
-          fileName: `${sTitle}.mp3`,
-          ptt: false,
-          contextInfo: nlCtx
-        }, { quoted: collected });
+          react: { text: '🎵', key: msg.key }
+        });
 
-      } else if (choice === '2') {
-        await socket.sendMessage(sender, {
-          audio: audioBuffer,
-          mimetype: 'audio/ogg; codecs=opus',
-          ptt: true,
-          contextInfo: nlCtx
-        }, { quoted: collected });
-
-      } else if (choice === '3') {
-        await socket.sendMessage(sender, {
-          document: audioBuffer,
-          mimetype: 'audio/mpeg',
-          fileName: `${sTitle}.mp3`,
-          contextInfo: nlCtx
-        }, { quoted: collected });
+      } finally {
+        [tmpMp3, tmpTag, tmpOpus, tmpOut].forEach(f => {
+          try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch (e) {}
+        });
       }
 
-      await socket.sendMessage(sender, { react: { text: '🎵', key: msg.key } }).catch(() => {});
-
-    } catch (e) {
-      console.error('[song error]:', e.message);
-      await socket.sendMessage(sender, {
-        text: `꒰ᵎ ❌ *Error* ᵎ꒱\n\n⚠️ Failed to process song download!\n\n*${botName}* 🖤`
-      }, { quoted: msg });
-    }
   }
 };
