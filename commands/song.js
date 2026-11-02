@@ -1,7 +1,5 @@
 const axios = require('axios');
 
-const VERCEL_API = 'https://sasindaapi-api-mini.vercel.app'; // උඹේ Vercel API එක
-
 module.exports = {
   name: 'song',
   aliases: ['music', 'ytmp3', 'yt'],
@@ -11,20 +9,20 @@ module.exports = {
       sessionConfig, BOT_NAME_FANCY, NEWSLETTER_CONTEXT, resolveReplyJid
     } = ctx;
 
-    const botName = sessionConfig?.botName || BOT_NAME_FANCY || 'NEXUS-MD';
+    const botName = sessionConfig?.botName || BOT_NAME_FANCY || 'MIYORA-MD';
     const songQuery = args.join(" ").trim();
 
     if (!songQuery) {
       return await socket.sendMessage(sender, {
-        text: `꒰ᵎ 🎵 *Ytmp3 Song Downloader* ᵎ꒱
+        text: `꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
 
-⚠️ Please provide a song name or YouTube link!
+⚠️ Please provide a song name!
 
 📌 *Usage:* ${prefix}song <song name>
 📌 *Example:* ${prefix}song Manike Mage Hithe
 
-　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`
+  ˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+*${botName}* 🖤`
       }, { quoted: msg });
     }
 
@@ -63,17 +61,59 @@ module.exports = {
       if (!videoId) throw new Error('Video ID not found');
       const targetYouTubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-      // 3. Vercel API එකට කෝල් කර ඩවුන්ලෝඩ් ලින්ක් එක ලබා ගැනීම
-      const apiResp = await axios.get(`${VERCEL_API}/api/download/yt?url=${encodeURIComponent(targetYouTubeUrl)}`, {
-        timeout: 45000
-      });
+      // 3. Multi-Source Fallback Engine (කෙලින්ම බොට් එක ඇතුළෙන්ම ක්‍රියාත්මක වේ)
+      let downloadUrl = null;
+      const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
-      if (!apiResp.data || !apiResp.data.downloadUrl) {
-        throw new Error('Download URL extraction failed from Vercel API');
+      // Method 1: SaveNow
+      try {
+        const res1 = await fetch('https://p.savenow.to/v1/convert', {
+          method: 'POST',
+          headers: { 'accept': '*/*', 'content-type': 'application/json', 'origin': 'https://en.savefrom.net', 'referer': 'https://en.savefrom.net/', 'user-agent': USER_AGENT },
+          body: JSON.stringify({ url: targetYouTubeUrl })
+        });
+        const data1 = await res1.json();
+        if (data1 && data1.url) {
+          downloadUrl = data1.url;
+          sTitle = data1.title || sTitle;
+        }
+      } catch (e1) {}
+
+      // Method 2: CNV.cx Fallback
+      if (!downloadUrl) {
+        try {
+          const res2 = await fetch('https://cnv.cx/v2/converter', {
+            method: 'POST',
+            headers: { 'accept': '*/*', 'content-type': 'application/x-www-form-urlencoded', 'origin': 'https://frame.y2meta-uk.com', 'referer': 'https://frame.y2meta-uk.com/', 'user-agent': USER_AGENT },
+            body: new URLSearchParams({ 'link': targetYouTubeUrl, 'format': 'mp3', 'audioBitrate': '128', 'videoQuality': '720', 'filenameStyle': 'pretty', 'vCodec': 'h264' }).toString()
+          });
+          const data2 = await res2.json();
+          if (data2 && data2.url) {
+            downloadUrl = data2.url;
+            sTitle = data2.filename || sTitle;
+          }
+        } catch (e2) {}
       }
 
-      sTitle = apiResp.data.title || sTitle;
-      const downloadUrl = apiResp.data.downloadUrl;
+      // Method 3: Cobalt Fallback
+      if (!downloadUrl) {
+        try {
+          const res3 = await fetch('https://co.wuk.sh/api/json', {
+            method: 'POST',
+            headers: { 'accept': 'application/json', 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0' },
+            body: JSON.stringify({ url: targetYouTubeUrl, isAudioOnly: true, dubLang: false })
+          });
+          const data3 = await res3.json();
+          if (data3 && data3.url) {
+            downloadUrl = data3.url;
+            sTitle = data3.filename || sTitle;
+          }
+        } catch (e3) {}
+      }
+
+      if (!downloadUrl) {
+        throw new Error('All download backends failed');
+      }
 
       await socket.sendMessage(sender, { react: { text: '📥', key: msg.key } }).catch(() => {});
 
@@ -88,17 +128,17 @@ module.exports = {
       };
 
       // 4. Interactive Format Menu (1, 2 හෝ 3 තෝරාගැනීමට)
-      const caption = `꒰ᵎ 🎵 *Ytmp3 Downloader* ᵎ꒱
+      const caption = `꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
 
 🎶 *Title* ➜ ${sTitle}
 
 ✨ *Select your format!*
 
-　1️⃣ ➜ 🎵 MP3 File
-　2️⃣ ➜ 🎤 Voice Message (PTT)
-　3️⃣ <span>➜</span> 📄 Document
+ 1️⃣ ➜ 🎵 MP3 File
+ 2️⃣ ➜ 🎤 Voice Message
+ 3️⃣ ➜ 📄 Document
 
-　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+  ˚₊‧꒰ა 🌸 ໒꒱‧₊˚
 > 💬 *Reply 1, 2 or 3* 👆`;
 
       const sentMsg = await socket.sendMessage(sender, {
@@ -108,7 +148,7 @@ module.exports = {
 
       await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } }).catch(() => {});
 
-      // 5. User Reply එක (1, 2, හෝ 3) ලබා ගැනීම සඳහා Listener එකක්
+      // 5. User Reply එක (1, 2, හෝ 3) ලබා ගැනීම
       const collected = await new Promise((resolve) => {
         const listener = ({ messages }) => {
           for (const m2 of messages) {
@@ -138,16 +178,16 @@ module.exports = {
 
       const choice = (collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim();
 
-      // 6. Direct Audio Buffer එක Download ලින්ක් එකෙන් ලබා ගැනීම
+      // 6. Direct Audio Buffer ලබා ගැනීම
       const audioBufferRes = await axios.get(downloadUrl, {
         responseType: 'arraybuffer',
         timeout: 90000,
-        headers: { 'User-Agent': 'Mozilla/5.0' }
+        headers: { 'User-Agent': USER_AGENT }
       });
 
       const audioBuffer = Buffer.from(audioBufferRes.data);
 
-      // 7. තෝරාගත් ආකෘතියට අනුව ෆයිල් එක යැවීම
+      // 7. තෝරාගත් ආකෘතියට අනුව යැවීම
       if (choice === '1') {
         await socket.sendMessage(sender, {
           audio: audioBuffer,
