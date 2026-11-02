@@ -26,8 +26,14 @@ module.exports = {
       const cfg = sessionConfig; // reused from top of handler (was: extra Mongo query per command)
       const botName = cfg.botName || BOT_NAME_FANCY;
 
-      const YT_API     = 'https://mr-thinuzz-api-build.vercel.app/api/ytmp3/download';
-      const YT_API_KEY = 'key_6c38f6ff3c678b114a98e98af4b3240c';
+      const POWER_HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Connection': 'keep-alive'
+      };
 
       const songQuery = args.join(" ").trim();
 
@@ -57,11 +63,12 @@ module.exports = {
     *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
       }
 
-      const video    = search.videos[0];
-      const sUrl     = video.url;
+      const video     = search.videos[0];
       const sMetadata = video;
+      const rawUrl    = video.url;
+      const videoId   = video.videoId || rawUrl.split('v=')[1]?.split('&')[0] || rawUrl.split('youtu.be/')[1]?.split('?')[0];
+      const sUrl      = videoId ? `https://www.youtube.com/watch?v=${videoId}` : rawUrl;
 
-      const videoId  = sUrl.split('v=')[1]?.split('&')[0] || sUrl.split('youtu.be/')[1]?.split('?')[0];
       const thumbUrl = videoId
         ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
         : sMetadata.thumbnail;
@@ -69,58 +76,82 @@ module.exports = {
       let sDownloadUrl = null;
       let sTitle       = sMetadata.title || 'Song';
 
-      try {
-        const apiResp = await axios.get(`${YT_API}?url=${encodeURIComponent(sUrl)}&apiKey=${YT_API_KEY}`, {
-          timeout: 30000,
-          headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
-        const resData = apiResp.data;
-        if (resData && (resData.status || resData.success)) {
-          const data      = resData.data || resData.result || resData;
-          const downloads = data.downloads || resData.downloads;
-          const dlLinks   = data.download_links || resData.download_links || (Array.isArray(downloads) ? downloads : null);
+      const isAudioUrl = (u) => {
+        if (typeof u !== 'string' || !/^https?:\/\//i.test(u)) return false;
+        if (/^https?:\/\/(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\//i.test(u)) return false;
+        if (/^https?:\/\/(i\.ytimg\.com|img\.youtube\.com|yt3\.ggpht\.com)\//i.test(u)) return false;
+        if (/\.(jpg|jpeg|png|webp|gif|svg|ico)(\?.*)?$/i.test(u)) return false;
+        if (/whatsapp\.com|t\.me\/|github\.com|instagram\.com|facebook\.com/i.test(u)) return false;
+        return true;
+      };
 
-          const isDirectUrl = (u) => typeof u === 'string' && u.startsWith('http') && !/youtube\.com\/watch|youtu\.be\//i.test(u);
-
-          const fromObj = (downloads && typeof downloads === 'object' && !Array.isArray(downloads))
-            ? [downloads.mp3, downloads.audio, downloads.url, downloads.hd, downloads.sd, ...Object.values(downloads)].find(isDirectUrl)
-            : (isDirectUrl(downloads) ? downloads : null);
-
-          const fromArr = Array.isArray(dlLinks)
-            ? dlLinks.map(item => (typeof item === 'string' ? item : item?.url || item?.download || item?.link)).find(isDirectUrl)
-            : null;
-
-          sDownloadUrl = [
-            data.downloadUrl,
-            data.download_url,
-            data.dl_link,
-            data.dlink,
-            data.mp3,
-            data.audio,
-            resData.downloadUrl,
-            resData.download_url,
-            resData.dl_link,
-            resData.dlink,
-            resData.mp3,
-            resData.audio,
-            fromObj,
-            fromArr,
-            data.link,
-            resData.link,
-            data.url,
-            resData.url
-          ].find(isDirectUrl) || null;
-
-          sTitle = data.title || resData.title || sTitle;
+      const findDownloadUrl = (obj) => {
+        if (!obj) return null;
+        if (typeof obj === 'string') return isAudioUrl(obj) ? obj : null;
+        if (Array.isArray(obj)) {
+          for (const item of obj) {
+            const found = findDownloadUrl(item);
+            if (found) return found;
+          }
+          return null;
         }
-      } catch (e) {
-        console.log('[song] API error:', e.message);
+        if (typeof obj === 'object') {
+          const priorityKeys = [
+            'downloadUrl', 'download_url', 'dl_link', 'dlink', 'mp3',
+            'audio', 'download', 'downloads', 'download_links', 'direct',
+            'items', 'url', 'link', 'result', 'data', 'hd', 'sd'
+          ];
+          for (const key of priorityKeys) {
+            if (key in obj) {
+              const found = findDownloadUrl(obj[key]);
+              if (found) return found;
+            }
+          }
+          for (const [key, val] of Object.entries(obj)) {
+            if (/thumb|image|cover|avatar|channel|author|creator|owner/i.test(key)) continue;
+            const found = findDownloadUrl(val);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const apiList = [
+        `https://mr-thinuzz-api-build.vercel.app/api/ytmp3/download?url=${encodeURIComponent(sUrl)}&apiKey=key_6c38f6ff3c678b114a98e98af4b3240c`,
+        `https://mr-thinuzz-api-build.vercel.app/api/ytmp3/download?url=${encodeURIComponent(sUrl)}&apiKey=key_faa62e4037a95cda`,
+        `https://mr-thinuzz-api-build.vercel.app/api/ytmp3?url=${encodeURIComponent(sUrl)}&apiKey=key_faa62e4037a95cda`,
+        `https://sasa-dev-api.xyz/api/ytmp3/dl?url=${encodeURIComponent(sUrl)}&apikey=Sasa_Dev_Api_24408478357382abb8c9957d89df67059af8168d`,
+        `https://sasa-dev-api.xyz/api/ytmp3?url=${encodeURIComponent(sUrl)}&apikey=Sasa_Dev_Api_24408478357382abb8c9957d89df67059af8168d`,
+        `https://sasa-dev-api.xyz/api/youtube/mp3?url=${encodeURIComponent(sUrl)}&apikey=Sasa_Dev_Api_24408478357382abb8c9957d89df67059af8168d`,
+        `https://podda-api.zone.id/ytmp3?url=${encodeURIComponent(sUrl)}`
+      ];
+
+      for (const apiUrl of apiList) {
+        try {
+          const apiResp = await axios.get(apiUrl, {
+            timeout: 45000,
+            headers: POWER_HEADERS,
+            maxRedirects: 10
+          });
+          const resData = apiResp.data;
+          if (resData) {
+            const foundUrl = findDownloadUrl(resData);
+            if (foundUrl) {
+              sDownloadUrl = foundUrl;
+              const dataObj = resData.data || resData.result || resData;
+              sTitle = dataObj?.title || resData?.title || sTitle;
+              break;
+            }
+          }
+        } catch (e) {
+          console.log('[song] API error:', e.message);
+        }
       }
 
       if (!sDownloadUrl) {
         return reply(`꒰ᵎ 🎵 *Song Downloader* ᵎ꒱
 
-    ❌ Download failed! API unavailable.
+    ❌ Download failed! 📍 unavailable.
 
     　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
     *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
@@ -216,7 +247,8 @@ module.exports = {
         const dlResp = await axios.get(sDownloadUrl, {
           responseType: 'stream',
           timeout: 120000,
-          headers: { 'User-Agent': 'Mozilla/5.0' }
+          maxRedirects: 10,
+          headers: POWER_HEADERS
         }).catch(() => null);
 
         if (!dlResp?.data) {
