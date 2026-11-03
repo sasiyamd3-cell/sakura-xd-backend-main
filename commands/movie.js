@@ -1,171 +1,95 @@
-// Command: movie (aliases: cinesubz, film, mv)
-// CineSubz Movie Downloader using Mr Ransara API
+const axios = require('axios');
+
 module.exports = {
   name: 'movie',
-  aliases: ['cinesubz', 'film', 'mv'],
+  aliases: ['cine', 'cinesubz', 'film', 'video'],
   async execute(ctx) {
-    const {
-      socket, msg, sender, from, command, args, q, reply,
-      sessionConfig, number, prefix, config, BOT_NAME_FANCY,
-      NEWSLETTER_CONTEXT, resolveReplyJid
-    } = ctx;
+    const { socket, msg, sender, args, sessionConfig, BOT_NAME_FANCY, NEWSLETTER_CONTEXT } = ctx;
 
-    const axios = require('axios');
+    const botName = sessionConfig?.botName || BOT_NAME_FANCY || 'MIYORA-MD';
+    const query = args.join(" ").trim();
 
-    const sanitized = (number || '').replace(/[^0-9]/g, '');
-    const cfg = sessionConfig;
-    const botName = cfg?.botName || BOT_NAME_FANCY || 'Black Cat';
+    if (!query) {
+      return await socket.sendMessage(sender, {
+        text: `꒰ᵎ 🎬 *Movie & MP4 Downloader* ᵎ꒱
 
-    // ඔයා දුන් නිවැරදි API Key එක සහ Base URL එක
-    const API_KEY = 'key_c03461a36ebeedc181b2890a4987c6fd';
-    const searchQuery = args.join(" ").trim();
+⚠️ Please provide a movie or video name!
 
-    if (!searchQuery) {
-      return reply(`꒰ᵎ 🎬 *Movie Downloader* ᵎ꒱
-
-⚠️ Please provide a movie name!
-
-📌 *Usage:* ${prefix}movie <movie name>
-📌 *Example:* ${prefix}movie PAW Patrol
+📌 *Usage:* .movie <name>
+📌 *Example:* .movie Avatar 2 trailer
 
 　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
+*${botName}* 🖤`
+      }, { quoted: msg });
     }
 
-    await socket.sendMessage(sender, {
-      react: { text: '🔍', key: msg.key }
-    });
+    // 1. සර්ච් වෙනකොට පේන්න රියැක්ට් එකක් දැමීම
+    await socket.sendMessage(sender, { react: { text: '🔍', key: msg.key } }).catch(() => {});
 
     try {
-      // 1. ඔයා දුන් සර්ච් API එක හරහා ෆිල්ම් එක සර්ච් කිරීම
-      const searchUrl = `https://mr-thinuzz-api-build.vercel.app/api/cinesubz/search?query=${encodeURIComponent(searchQuery)}&apiKey=${API_KEY}`;
-      const searchRes = await axios.get(searchUrl, { timeout: 30000 });
-      const searchData = searchRes.data;
+      // 2. YouTube හෝ නිදහස් සෝස් එකකින් අදාළ වීඩියෝව සෙවුම් කර MP4 ලින්ක් එක ලබා ගැනීම
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' trailer mp4')}`;
+      const searchRes = await axios.get(searchUrl);
+      const match = searchRes.data.match(/var ytInitialData = ({.*?});<\/script>/);
 
-      // API එකෙන් ලැබෙන රිසල්ට් එක ලබා ගැනීම (ඔබේ API structure එකට අනුව)
-      const results = searchData?.results || searchData?.data || searchData;
-      if (!results || (Array.isArray(results) && results.length === 0)) {
-        return reply(`꒰ᵎ 🎬 *Movie Downloader* ᵎ꒱
+      if (!match) throw new Error('Search failed');
+      const json = JSON.parse(match[1]);
+      const contents = json.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
 
-❌ No movies found for *${searchQuery}*!
+      let videoId = null;
+      let mTitle = query;
 
-　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
+      if (contents) {
+        for (const c of contents) {
+          const items = c.itemSectionRenderer?.contents;
+          if (items) {
+            for (const i of items) {
+              if (i.videoRenderer) {
+                videoId = i.videoRenderer.videoId;
+                mTitle = i.videoRenderer.title?.runs?.[0]?.text || query;
+                break;
+              }
+            }
+          }
+          if (videoId) break;
+        }
       }
 
-      // පළමු ෆිල්ම් එකේ ලින්ක් එක (URL) ලබා ගැනීම
-      const firstMovie = Array.isArray(results) ? results[0] : results;
-      const moviePageUrl = firstMovie.link || firstMovie.url;
-      const thumbUrl = firstMovie.image || firstMovie.poster || config.IMAGE_PATH;
+      if (!videoId) throw new Error('Video not found');
+      const targetYouTubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-      if (!moviePageUrl) {
-        return reply(`❌ Error: Movie link not found in API response!`);
-      }
+      await socket.sendMessage(sender, { react: { text: '📥', key: msg.key } }).catch(() => {});
 
-      // 2. එම ෆිල්ම් එකේ ඩවුන්ලෝඩ් ලින්ක් සහ විස්තර ලබා ගැනීම
-      const detailUrl = `https://mr-thinuzz-api-build.vercel.app/api/cinesubz/movie?url=${encodeURIComponent(moviePageUrl)}&apiKey=${API_KEY}`;
-      const detailRes = await axios.get(detailUrl, { timeout: 30000 });
-      const responseData = detailRes.data;
-
-      // ඔයා එවපු JSON ස්වරූපයට අනුව (data -> title, size, downloadUrls)
-      const movieInfo = responseData?.data || responseData;
-      const movieTitle = movieInfo?.title || searchQuery;
-      const fileSize = movieInfo?.size || 'Unknown Size';
-      const downloadUrls = movieInfo?.downloadUrls || [];
-
-      if (!downloadUrls.length) {
-        return reply(`꒰ᵎ 🎬 *Movie Downloader* ᵎ꒱
-
-❌ Download links not available for this movie!
-
-　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
-      }
-
-      // Pixeldrain හෝ Direct MP4 ලින්ක් එක තෝරා ගැනීම (පළමු ලින්ක් එක)
-      const directDownloadUrl = downloadUrls[0].url;
-
-      const caption = `꒰ᵎ 🎬 *CineSubz Movie Downloader* ᵎ꒱
-
-🎥 *Title* ➜ ${movieTitle}
-📦 *Size* ➜ ${fileSize}
-
-✨ *Select your sending format!*
-
-　1️⃣ ➜ 🎥 Video File (Direct Stream)
-　2️⃣ ➜ 📄 Document File (HQ Download)
-
-　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-> 💬 *Reply 1 or 2* 👆`;
-
-      let sentMsg;
+      // 3. Cobalt API මඟින් ඩිරෙක්ට් MP4 ඩවුන්ලෝඩ් ලින්ක් එක ලබා ගැනීම
+      let downloadUrl = null;
       try {
-        sentMsg = await socket.sendMessage(sender, {
-          image: { url: thumbUrl },
-          caption,
-          contextInfo: {
-            forwardingScore: 1,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-              newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
-              newsletterName: botName,
-              serverMessageId: 999,
-            }
-          }
-        }, { quoted: msg });
-      } catch (e) {
-        sentMsg = await socket.sendMessage(sender, {
-          text: caption,
-          contextInfo: {
-            forwardingScore: 1,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-              newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
-              newsletterName: botName,
-              serverMessageId: 999,
-            }
-          }
-        }, { quoted: msg });
+        const cobaltRes = await axios.post('https://co.wuk.sh/api/json', {
+          url: targetYouTubeUrl,
+          isAudioOnly: false,
+          videoQuality: '720'
+        }, {
+          headers: { 'accept': 'application/json', 'content-type': 'application/json' }
+        });
+
+        if (cobaltRes.data && cobaltRes.data.url) {
+          downloadUrl = cobaltRes.data.url;
+        }
+      } catch (err) {
+        console.log('Cobalt fallback failed...');
       }
 
-      await socket.sendMessage(sender, {
-        react: { text: '✅', key: msg.key }
-      });
-
-      // පරිශීලකයාගෙන් අංකයක් (1 හෝ 2) ලැබෙන තෙක් බලා සිටීම
-      const collected = await new Promise((resolve) => {
-        const listener = ({ messages }) => {
-          for (const m2 of messages) {
-            const isReply = m2.message?.extendedTextMessage?.contextInfo?.stanzaId === sentMsg.key.id;
-            const text = (m2.message?.conversation || m2.message?.extendedTextMessage?.text || '').trim();
-            const isValid = ['1', '2'].includes(text);
-            const isSame = resolveReplyJid(m2) === sender;
-            if (isReply && isValid && isSame) {
-              clearTimeout(timeout);
-              socket.ev.off('messages.upsert', listener);
-              resolve(m2);
-            }
-          }
-        };
-        const timeout = setTimeout(() => {
-          socket.ev.off('messages.upsert', listener);
-          resolve(null);
-        }, 60000);
-        socket.ev.on('messages.upsert', listener);
-      });
-
-      if (!collected) {
-        return socket.sendMessage(sender, {
-          text: `꒰ᵎ ⏰ *Time Out* ᵎ꒱\n\n⌛ 60 seconds expired!\n\n*${botName}* 🖤`
-        }, { quoted: sentMsg });
+      if (!downloadUrl) {
+        throw new Error('Failed to get MP4 download link');
       }
 
-      const choice = (collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim();
-      const formatLabel = choice === '1' ? 'Video File 🎥' : 'Document File 📄';
+      // 4. MP4 වීඩියෝ බෆර් එක ඩවුන්ලෝඩ් කරගැනීම
+      const videoBufferRes = await axios.get(downloadUrl, {
+        responseType: 'arraybuffer',
+        timeout: 90000,
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
 
-      await socket.sendMessage(sender, {
-        text: `꒰ᵎ 📥 *Downloading Movie* ᵎ꒱\n\n⏳ Processing *${formatLabel}*...\n🎬 *${movieTitle}*\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚`
-      }, { quoted: collected });
+      const videoBuffer = Buffer.from(videoBufferRes.data);
 
       const nlCtx = {
         forwardingScore: 1,
@@ -177,34 +101,21 @@ module.exports = {
         }
       };
 
-      if (choice === '1') {
-        // Video එකක් ලෙස යැවීම
-        await socket.sendMessage(sender, {
-          video: { url: directDownloadUrl },
-          mimetype: 'video/mp4',
-          caption: `🎬 *${movieTitle}*\n📦 *Size:* ${fileSize}\n\n*${botName}* 🖤`,
-          contextInfo: nlCtx
-        }, { quoted: collected });
-
-      } else if (choice === '2') {
-        // Document (MP4 file) එකක් ලෙස යැවීම
-        await socket.sendMessage(sender, {
-          document: { url: directDownloadUrl },
-          mimetype: 'video/mp4',
-          fileName: movieTitle,
-          caption: `🎬 *${movieTitle}*\n📦 *Size:* ${fileSize}\n\n*${botName}* 🖤`,
-          contextInfo: nlCtx
-        }, { quoted: collected });
-      }
-
+      // 5. WhatsApp එකට ඩිරෙක්ට් MP4 වීඩියෝ ෆයිල් එක යැවීම
       await socket.sendMessage(sender, {
-        react: { text: '🎬', key: msg.key }
-      });
+        video: videoBuffer,
+        mimetype: 'video/mp4',
+        caption: `꒰ᵎ 🎬 *Movie / Video Hub* ᵎ꒱\n\n✨ *Title:* ${mTitle}\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚\n> *${botName}* 🖤`,
+        contextInfo: nlCtx
+      }, { quoted: msg });
 
-    } catch (err) {
-      console.log('[movie] Error:', err.message);
-      await reply(`꒰ᵎ ❌ *Error* ᵎ꒱\n\n⚠️ Failed to fetch movie details from API!\n\n*${botName}* 🖤`);
+      await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } }).catch(() => {});
+
+    } catch (e) {
+      console.error('[movie mp4 error]:', e.message);
+      await socket.sendMessage(sender, {
+        text: `꒰ᵎ ❌ *Error* ᵎ꒱\n\n⚠️ Failed to download MP4 video!\n\n*${botName}* 🖤`
+      }, { quoted: msg });
     }
-
   }
 };
