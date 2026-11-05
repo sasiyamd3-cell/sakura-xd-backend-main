@@ -6,7 +6,7 @@ module.exports = {
   name: 'movie',
   aliases: ['chithrapata', 'film', 'cine', 'searchmovie'],
   async execute(ctx) {
-    const { socket, msg, sender, args, q, reply, sessionConfig, BOT_NAME_FANCY, NEWSLETTER_CONTEXT, resolveReplyJid } = ctx;
+    const { socket, msg, sender, args, q, reply, sessionConfig, BOT_NAME_FANCY, NEWSLETTER_CONTEXT, resolveReplyJid, prefix } = ctx;
 
     const botName = sessionConfig?.botName || BOT_NAME_FANCY || 'MIYORA-MD';
     const searchQuery = args.join(' ').trim() || q;
@@ -17,8 +17,8 @@ module.exports = {
 
 ⚠️ Please provide a movie name to search!
 
-📌 *Usage:* .movie < name>
-📌 *Example:* .movie 
+📌 *Usage:* ${prefix || '.'}movie <movie name>
+📌 *Example:* ${prefix || '.'}movie Leo
 
 　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
 *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`
@@ -35,17 +35,20 @@ module.exports = {
       const searchApi = `https://supunofc.site/api/movie/chithrapata/search?query=${encodeURIComponent(searchQuery)}&page=1&apikey=${API_KEY}`;
       const { data } = await axios.get(searchApi, { timeout: 25000 });
 
-      if (!data || data.success !== true || !data.result || !data.result.length) {
+      // API එකෙන් එන රේන්ජ් හෝ රිසල්ට් අරේ එක පරීක්ෂා කිරීම
+      const movieList = data?.result || data?.data || data?.results || (Array.isArray(data) ? data : []);
+
+      if (!data || (data.success !== true && !Array.isArray(movieList)) || !movieList.length) {
         throw new Error(`No movies found for "${searchQuery}"!`);
       }
 
-      const movies = data.result.slice(0, 5); // පළමු මූවිස් 5 පමණක් පෙන්වීම
+      const movies = movieList.slice(0, 5); // පළමු මූවිස් 5 පමණක් පෙන්වීම
       let listText = `꒰ᵎ 🎬 *Movie Search Results* ᵎ꒱\n\n🔎 *Query:* ${searchQuery}\n\n`;
 
       movies.forEach((movie, index) => {
-        listText += `  *${index + 1}*. ${movie.title || 'Unknown Title'}\n`;
-        if (movie.year) listText += `     📅 *Year:* ${movie.year}\n`;
-        listText += `\n`;
+        const title = movie.title || movie.name || movie.movieName || 'Unknown Title';
+        const year = movie.year || movie.releaseYear || '';
+        listText += `  *${index + 1}*. ${title} ${year ? `(${year})` : ''}\n\n`;
       });
 
       listText += `> 💬 *Please reply with the number (1-${movies.length}) to download!* 👆\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚\n*${botName}* 🖤`;
@@ -68,7 +71,7 @@ module.exports = {
         react: { text: '📋', key: msg.key }
       }).catch(() => {});
 
-      // 4. යූසර්ගේ අංකයේ රිප්ලයි එක (1 සිට 5 දක්වා) ලබා ගැනීම
+      // 4. යූසර්ගේ අංකයේ රිප්ලයි එක ලබා ගැනීම
       const collected = await new Promise((resolve) => {
         const listener = ({ messages }) => {
           for (const m2 of messages) {
@@ -96,33 +99,33 @@ module.exports = {
 
       if (!collected) {
         return socket.sendMessage(sender, {
-          text: `꒰ᵎ ⏰ *Time Out* ᵎ꒱\n\n⌛ 60 seconds expired!\n> Please use *${prefix || '.movie'}* command again 🌸\n\n*${botName}* 🖤`
+          text: `꒰ᵎ ⏰ *Time Out* ᵎ꒱\n\n⌛ 60 seconds expired!\n> Please use *${prefix || '.'}movie* command again 🌸\n\n*${botName}* 🖤`
         }, { quoted: sentMsg });
       }
 
       const choiceIndex = parseInt((collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim()) - 1;
       const selectedMovie = movies[choiceIndex];
+      const selectedTitle = selectedMovie.title || selectedMovie.name || selectedMovie.movieName || 'Movie';
 
       await socket.sendMessage(sender, {
-        text: `꒰ᵎ 📥 *Downloading* ᵎ꒱\n\n⏳ Preparing *${selectedMovie.title}*...\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚`
+        text: `꒰ᵎ 📥 *Downloading* ᵎ꒱\n\n⏳ Preparing *${selectedTitle}*...\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚`
       }, { quoted: collected });
 
       await socket.sendMessage(sender, {
         react: { text: '⏳', key: collected.key }
       }).catch(() => {});
 
-      // 5. මූවි ලින්ක් එකෙන් ඩිරෙක්ට් ෆයිල් එක ඩවුන්ලෝඩ් කරගැනීම (සෙලෙක්ට් කළ මූවි එකේ ඩීටේල්ස් හෝ ඩවුන්ලෝඩ් ලින්ක් එක ලබා ගැනීම)
-      // (සමහර API රිසල්ට් වල ඩිරෙක්ට් ඩවුන්ලෝඩ් ලින්ක් එක ඇත, නැතහොත් මූවි පේජ් ලින්ක් එක හරහා බෆර් කරයි)
-      const downloadUrl = selectedMovie.dl_link || selectedMovie.download || selectedMovie.url;
+      // 5. ඩවුන්ලෝඩ් ලින්ක් එක ලබා ගැනීම (විවිධ කීස් චෙක් කිරීම)
+      const downloadUrl = selectedMovie.dl_link || selectedMovie.download || selectedMovie.url || selectedMovie.link || selectedMovie.downloadUrl;
 
       if (!downloadUrl) {
-        throw new Error('Direct download link not available for this movie!');
+        throw new Error('Direct download link not available for this movie in API response!');
       }
 
       const fileResp = await axios.get(downloadUrl, {
         responseType: 'arraybuffer',
         timeout: 120000,
-        headers: { 'User-Agent': 'Mozilla/5.0' }
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
       });
 
       const fileBuffer = Buffer.from(fileResp.data);
@@ -141,8 +144,8 @@ module.exports = {
       await socket.sendMessage(sender, {
         document: fileBuffer,
         mimetype: 'video/mp4',
-        fileName: `${selectedMovie.title || 'Movie'}.mp4`,
-        caption: `꒰ᵎ 🎬 *Movie Downloader* ᵎ꒱\n\n✨ *Title* ➜ ${selectedMovie.title}\n📥 *Status* ➜ Downloaded Successfully!\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚\n> *${botName}* 🖤`,
+        fileName: `${selectedTitle}.mp4`,
+        caption: `꒰ᵎ 🎬 *Movie Downloader* ᵎ꒱\n\n✨ *Title* ➜ ${selectedTitle}\n📥 *Status* ➜ Downloaded Successfully!\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚\n> *${botName}* 🖤`,
         contextInfo: nlCtx
       }, { quoted: collected });
 
