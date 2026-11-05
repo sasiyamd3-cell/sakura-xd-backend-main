@@ -1,253 +1,159 @@
 const axios = require('axios');
 
-
-const API_KEY = 'supun_55997eba6e54705892b878304809e52d';
-
-const API_BASE = 'https://supunofc.site/api/movie/baiscopes/dl';
-const MAX_FILE_SIZE = 100 * 1024 * 1024;
-
-const client = axios.create({
-  timeout: 35000,
-  headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
-  }
-});
-
-function safeFileName(name) {
-  return String(name || 'movie')
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 100) || 'movie';
-}
-
-function extractDownloadUrl(data) {
-  if (!data) return null;
-
-  if (typeof data === 'string') {
-    return /^https?:\/\//i.test(data) ? data : null;
-  }
-
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      const result = extractDownloadUrl(item);
-      if (result) return result;
-    }
-    return null;
-  }
-
-  if (typeof data === 'object') {
-    const keys = [
-      'dl_link',
-      'download',
-      'downloadUrl',
-      'download_url',
-      'url',
-      'link'
-    ];
-
-    for (const key of keys) {
-      const value = data[key];
-
-      if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
-        return value;
-      }
-
-      if (value && typeof value === 'object') {
-        const result = extractDownloadUrl(value);
-        if (result) return result;
-      }
-    }
-
-    if (data.data) {
-      return extractDownloadUrl(data.data);
-    }
-  }
-
-  return null;
-}
+const API_KEY = 'supun_201a6aed9c5fe527e4912294630e7235';
 
 module.exports = {
   name: 'movie',
-  aliases: ['cine', 'film', 'baiscope'],
-
+  aliases: ['chithrapata', 'film', 'cine', 'searchmovie'],
   async execute(ctx) {
-    const {
-      socket,
-      msg,
-      sender,
-      args,
-      sessionConfig,
-      BOT_NAME_FANCY,
-      NEWSLETTER_CONTEXT
-    } = ctx;
+    const { socket, msg, sender, args, q, reply, sessionConfig, BOT_NAME_FANCY, NEWSLETTER_CONTEXT, resolveReplyJid } = ctx;
 
-    const botName =
-      sessionConfig?.botName ||
-      BOT_NAME_FANCY ||
-      'MIYORA-MD';
+    const botName = sessionConfig?.botName || BOT_NAME_FANCY || 'MIYORA-MD';
+    const searchQuery = args.join(' ').trim() || q;
 
-    const query = args.join(' ').trim();
+    if (!searchQuery) {
+      return await socket.sendMessage(sender, {
+        text: `꒰ᵎ 🎬 *Movie Search & Downloader* ᵎ꒱
 
-    const react = async (emoji) => {
-      await socket.sendMessage(sender, {
-        react: {
-          text: emoji,
-          key: msg.key
-        }
-      }).catch(() => {});
-    };
+⚠️ Please provide a movie name to search!
 
-    if (!query) {
-      return socket.sendMessage(sender, {
-        text: `꒰ᵎ 🎬 *Movie Downloader* ᵎ꒱
+📌 *Usage:* .movie < name>
+📌 *Example:* .movie 
 
-⚠️ Please provide a movie name!
-
-📌 *Usage:* .movie <movie name>
-📌 *Example:* .movie Leo
-
-˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤 | *𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃*`
+　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
+*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`
       }, { quoted: msg });
     }
 
-    await react('🔍');
+    // 1. සර්ච් වෙනකොට පේන්න රියැක්ට් එකක් දැමීම
+    await socket.sendMessage(sender, {
+      react: { text: '🔍', key: msg.key }
+    }).catch(() => {});
 
     try {
-      const searchUrl =
-        `https://baiscopes.lk/?s=${encodeURIComponent(query)}`;
+      // 2. Chithrapata Search API එකට රික්වෙස්ට් එක යැවීම
+      const searchApi = `https://supunofc.site/api/movie/chithrapata/search?query=${encodeURIComponent(searchQuery)}&page=1&apikey=${API_KEY}`;
+      const { data } = await axios.get(searchApi, { timeout: 25000 });
 
-      const apiResponse = await client.get(API_BASE, {
-        params: {
-          url: searchUrl,
-          apikey: API_KEY
-        }
-      });
-
-      const apiData = apiResponse.data;
-
-      if (!apiData || apiData.status === false) {
-        throw new Error(
-          apiData?.message || 'Movie not found!'
-        );
+      if (!data || data.success !== true || !data.result || !data.result.length) {
+        throw new Error(`No movies found for "${searchQuery}"!`);
       }
 
-      const downloadUrl = extractDownloadUrl(apiData);
+      const movies = data.result.slice(0, 5); // පළමු මූවිස් 5 පමණක් පෙන්වීම
+      let listText = `꒰ᵎ 🎬 *Movie Search Results* ᵎ꒱\n\n🔎 *Query:* ${searchQuery}\n\n`;
+
+      movies.forEach((movie, index) => {
+        listText += `  *${index + 1}*. ${movie.title || 'Unknown Title'}\n`;
+        if (movie.year) listText += `     📅 *Year:* ${movie.year}\n`;
+        listText += `\n`;
+      });
+
+      listText += `> 💬 *Please reply with the number (1-${movies.length}) to download!* 👆\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚\n*${botName}* 🖤`;
+
+      // 3. රිසල්ට්ස් ලිස්ට් එක යැවීම
+      const sentMsg = await socket.sendMessage(sender, {
+        text: listText,
+        contextInfo: {
+          forwardingScore: 1,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
+            newsletterName: botName,
+            serverMessageId: 999,
+          }
+        }
+      }, { quoted: msg });
+
+      await socket.sendMessage(sender, {
+        react: { text: '📋', key: msg.key }
+      }).catch(() => {});
+
+      // 4. යූසර්ගේ අංකයේ රිප්ලයි එක (1 සිට 5 දක්වා) ලබා ගැනීම
+      const collected = await new Promise((resolve) => {
+        const listener = ({ messages }) => {
+          for (const m2 of messages) {
+            const isReply = m2.message?.extendedTextMessage?.contextInfo?.stanzaId === sentMsg.key.id;
+            const text = (m2.message?.conversation || m2.message?.extendedTextMessage?.text || '').trim();
+            const choiceNum = parseInt(text);
+            const isValid = !isNaN(choiceNum) && choiceNum >= 1 && choiceNum <= movies.length;
+            const isSame = resolveReplyJid(m2) === sender;
+
+            if (isReply && isValid && isSame) {
+              clearTimeout(timeout);
+              socket.ev.off('messages.upsert', listener);
+              resolve(m2);
+            }
+          }
+        };
+
+        const timeout = setTimeout(() => {
+          socket.ev.off('messages.upsert', listener);
+          resolve(null);
+        }, 60000);
+
+        socket.ev.on('messages.upsert', listener);
+      });
+
+      if (!collected) {
+        return socket.sendMessage(sender, {
+          text: `꒰ᵎ ⏰ *Time Out* ᵎ꒱\n\n⌛ 60 seconds expired!\n> Please use *${prefix || '.movie'}* command again 🌸\n\n*${botName}* 🖤`
+        }, { quoted: sentMsg });
+      }
+
+      const choiceIndex = parseInt((collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim()) - 1;
+      const selectedMovie = movies[choiceIndex];
+
+      await socket.sendMessage(sender, {
+        text: `꒰ᵎ 📥 *Downloading* ᵎ꒱\n\n⏳ Preparing *${selectedMovie.title}*...\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚`
+      }, { quoted: collected });
+
+      await socket.sendMessage(sender, {
+        react: { text: '⏳', key: collected.key }
+      }).catch(() => {});
+
+      // 5. මූවි ලින්ක් එකෙන් ඩිරෙක්ට් ෆයිල් එක ඩවුන්ලෝඩ් කරගැනීම (සෙලෙක්ට් කළ මූවි එකේ ඩීටේල්ස් හෝ ඩවුන්ලෝඩ් ලින්ක් එක ලබා ගැනීම)
+      // (සමහර API රිසල්ට් වල ඩිරෙක්ට් ඩවුන්ලෝඩ් ලින්ක් එක ඇත, නැතහොත් මූවි පේජ් ලින්ක් එක හරහා බෆර් කරයි)
+      const downloadUrl = selectedMovie.dl_link || selectedMovie.download || selectedMovie.url;
 
       if (!downloadUrl) {
-        console.log('[MOVIE API RESPONSE]', apiData);
-        throw new Error('Direct download link not found in API response!');
+        throw new Error('Direct download link not available for this movie!');
       }
 
-      const parsedUrl = new URL(downloadUrl);
-
-      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        throw new Error('Invalid download URL!');
-      }
-
-      const movieTitle = safeFileName(
-        apiData.title ||
-        apiData.filename ||
-        apiData.data?.title ||
-        query
-      );
-
-      await react('📥');
-
-      const fileResponse = await client.get(downloadUrl, {
+      const fileResp = await axios.get(downloadUrl, {
         responseType: 'arraybuffer',
         timeout: 120000,
-        maxContentLength: MAX_FILE_SIZE,
-        maxBodyLength: MAX_FILE_SIZE,
-        headers: {
-          Accept: 'video/mp4,video/*,application/octet-stream'
-        }
+        headers: { 'User-Agent': 'Mozilla/5.0' }
       });
 
-      const fileBuffer = Buffer.from(fileResponse.data);
+      const fileBuffer = Buffer.from(fileResp.data);
 
-      if (!fileBuffer.length) {
-        throw new Error('Downloaded file is empty!');
-      }
-
-      if (fileBuffer.length > MAX_FILE_SIZE) {
-        throw new Error('Movie exceeds the 100MB file limit!');
-      }
-
-      const contentType =
-        fileResponse.headers['content-type'] || '';
-
-      if (
-        contentType.includes('text/html') ||
-        contentType.includes('application/json')
-      ) {
-        throw new Error('Invalid movie file received!');
-      }
-
-      const contextInfo = {};
-
-      const newsletterInfo =
-        NEWSLETTER_CONTEXT?.forwardedNewsletterMessageInfo;
-
-      if (newsletterInfo?.newsletterJid) {
-        contextInfo.forwardingScore = 1;
-        contextInfo.isForwarded = true;
-        contextInfo.forwardedNewsletterMessageInfo = {
-          newsletterJid: newsletterInfo.newsletterJid,
+      const nlCtx = {
+        forwardingScore: 1,
+        isForwarded: true,
+        forwardedNewsletterMessageInfo: {
+          newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
           newsletterName: botName,
-          serverMessageId: 999
-        };
-      }
+          serverMessageId: 999,
+        }
+      };
 
+      // 6. WhatsApp එකට Document (MP4) එකක් විදිහට යැවීම
       await socket.sendMessage(sender, {
         document: fileBuffer,
         mimetype: 'video/mp4',
-        fileName: `${movieTitle}.mp4`,
-        caption: `꒰ᵎ 🎬 *Movie Hub* ᵎ꒱
-
-✨ *Title* ➜ ${movieTitle}
-📦 *Size* ➜ ${(fileBuffer.length / (1024 * 1024)).toFixed(2)} MB
-📥 *Status* ➜ Downloaded Successfully!
-
-˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-> *${botName}* 🖤 | *𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃*`,
-        ...(Object.keys(contextInfo).length
-          ? { contextInfo }
-          : {})
-      }, { quoted: msg });
-
-      await react('✅');
-
-    } catch (error) {
-      console.error('[MOVIE ERROR]', error.message);
-
-      await react('❌');
-
-      let reason = error.message || 'Unknown error';
-
-      if (error.code === 'ECONNABORTED') {
-        reason = 'Request timed out. Try again later.';
-      } else if (
-        error.response?.status === 404
-      ) {
-        reason = 'Movie or download link not found.';
-      } else if (
-        error.response?.status >= 500
-      ) {
-        reason = 'Movie API server unavailable.';
-      }
+        fileName: `${selectedMovie.title || 'Movie'}.mp4`,
+        caption: `꒰ᵎ 🎬 *Movie Downloader* ᵎ꒱\n\n✨ *Title* ➜ ${selectedMovie.title}\n📥 *Status* ➜ Downloaded Successfully!\n\n　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚\n> *${botName}* 🖤`,
+        contextInfo: nlCtx
+      }, { quoted: collected });
 
       await socket.sendMessage(sender, {
-        text: `꒰ᵎ ❌ *Movie Download Failed* ᵎ꒱
+        react: { text: '✅', key: collected.key }
+      }).catch(() => {});
 
-🎬 *Movie:* ${query}
-⚠️ *Reason:* ${reason}
-
-💡 Please try again later.
-
-˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-*${botName}* 🖤 | *𝐌𝐈𝐘𝐎𝐑𝐀 𝐌𝐃*`
+    } catch (e) {
+      console.error('[Movie Search Error]:', e.message);
+      await socket.sendMessage(sender, {
+        text: `꒰ᵎ ❌ *Error* ᵎ꒱\n\n⚠️ Failed to process movie!\n*Reason:* ${e.message}\n\n*${botName}* 🖤`
       }, { quoted: msg });
     }
   }
