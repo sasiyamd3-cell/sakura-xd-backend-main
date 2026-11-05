@@ -1,5 +1,4 @@
 // Command: fb (aliases: fbdl, facebook, fbd)
-// Auto-extracted from sakura.js switch-case during commandLoader refactor.
 module.exports = {
   name: 'fb',
   aliases: ['fbdl', 'facebook', 'fbd'],
@@ -14,17 +13,17 @@ module.exports = {
       const axios = require('axios');
 
       const sanitized = (number || '').replace(/[^0-9]/g, '');
-      const cfg = sessionConfig; // reused from top of handler (was: extra Mongo query per command)
-      const botName = cfg.botName || BOT_NAME_FANCY;
+      const cfg = sessionConfig; 
+      const botName = cfg?.botName || BOT_NAME_FANCY || 'MIYORA-MD';
 
-      const url = args[0];
+      const url = args[0] || q;
       if (!url) {
         return reply(`꒰ᵎ 🎬 *FB Downloader* ᵎ꒱
 
     ⚠️ Please provide a Facebook link!
 
     📌 *Usage:* ${prefix}fb <url>
-    📌 *Example:* ${prefix}fb https://fb.watch/xxx
+    📌 *Example:* ${prefix}fb https://www.facebook.com/watch?v=xxx
 
     　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
     *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
@@ -41,96 +40,89 @@ module.exports = {
 
       await socket.sendMessage(sender, {
         react: { text: '⏳', key: msg.key }
-      });
+      }).catch(() => {});
 
-      const { data } = await axios.get(
-        `https://www.movanest.xyz/v2/fbdown?url=${encodeURIComponent(url)}`,
-        { timeout: 15000 }
-      );
+      try {
+        // 1. SupunOFC API එකට රික්වෙස්ට් එක යැවීම
+        const apiKey = 'supun_201a6aed9c5fe527e4912294630e7235';
+        const apiUrl = `https://supunofc.site/api/download/facebook/dl?url=${encodeURIComponent(url)}&apikey=${apiKey}`;
 
-      if (!data.status || !data.results || !data.results.length) {
-        return reply(`꒰ᵎ 🎬 *FB Downloader* ᵎ꒱
+        const { data } = await axios.get(apiUrl, { timeout: 25000 });
 
-    ❌ Failed to fetch video info!
+        if (!data || data.success !== true || !data.result) {
+          throw new Error(data?.message || 'Failed to fetch video from API!');
+        }
 
-    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-    *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
-      }
+        const res = data.result;
+        const title = res.title || 'Facebook Video';
+        const thumbnail = res.thumbnail || cfg?.logo || config?.IMAGE_PATH || 'https://i.ibb.co/3134J4y/placeholder.jpg';
+        
+        // SD සහ HD ලින්ක්ස් ලබා ගැනීම (API එකේ එන ස්ට්‍රක්චර් එක අනුව)
+        const sdLink = res.sd || res.sd_link || res.normalQualityLink;
+        const hdLink = res.hd || res.hd_link || res.hdQualityLink || sdLink;
 
-      const video = data.results[0];
-      const title = video.title || 'Facebook Video';
-      const thumbnail = cfg.logo || config.IMAGE_PATH;
-      const duration = video.duration || 'Unknown';
-      const sdLink = video.normalQualityLink;
-      const hdLink = video.hdQualityLink || sdLink;
+        if (!sdLink && !hdLink) {
+          throw new Error('No download links found in API response!');
+        }
 
-      if (!sdLink && !hdLink) {
-        return reply(`꒰ᵎ 🎬 *FB Downloader* ᵎ꒱
-
-    ❌ No download links found!
-
-    　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
-    *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`);
-      }
-
-      const caption = `꒰ᵎ 🎬 *FB Downloader* ᵎ꒱
+        const caption = `꒰ᵎ 🎬 *FB Downloader* ᵎ꒱
 
     🎥 *Title* ➜ ${title}
-    ⏱️ *Duration* ➜ ${duration}
 
     ✨ *Select your quality!*
 
-    　1️⃣ ➜ SD Quality
-    　2️⃣ ➜ HD Quality
+    　1️⃣ ➜ SD Quality 📱
+    　2️⃣ ➜ HD Quality 🎯
 
     　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
     > 💬 *Reply 1 or 2* 👆`;
 
-      const sentMsg = await socket.sendMessage(sender, {
-        image: { url: thumbnail },
-        caption: caption,
-        contextInfo: {
-          forwardingScore: 1,
-          isForwarded: true,
-          forwardedNewsletterMessageInfo: {
-            newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
-            newsletterName: botName,
-            serverMessageId: 999,
-          }
-        }
-      }, { quoted: msg });
-
-      await socket.sendMessage(sender, {
-        react: { text: '✅', key: msg.key }
-      });
-
-      const collected = await new Promise((resolve) => {
-        const listener = ({ messages }) => {
-          for (const m2 of messages) {
-            const isReply = m2.message?.extendedTextMessage?.contextInfo?.stanzaId === sentMsg.key.id;
-            const text = (m2.message?.conversation || m2.message?.extendedTextMessage?.text || '').trim();
-            const isValid = ['1', '2'].includes(text);
-            const isSame = resolveReplyJid(m2) === sender;
-
-            if (isReply && isValid && isSame) {
-              clearTimeout(timeout);
-              socket.ev.off('messages.upsert', listener);
-              resolve(m2);
+        const sentMsg = await socket.sendMessage(sender, {
+          image: { url: thumbnail },
+          caption: caption,
+          contextInfo: {
+            forwardingScore: 1,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+              newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
+              newsletterName: botName,
+              serverMessageId: 999,
             }
           }
-        };
+        }, { quoted: msg });
 
-        const timeout = setTimeout(() => {
-          socket.ev.off('messages.upsert', listener);
-          resolve(null);
-        }, 60000);
+        await socket.sendMessage(sender, {
+          react: { text: '✅', key: msg.key }
+        }).catch(() => {});
 
-        socket.ev.on('messages.upsert', listener);
-      });
+        // 2. යූසර්ගේ රිප්ලයි එක (1 හෝ 2) ලබා ගැනීම
+        const collected = await new Promise((resolve) => {
+          const listener = ({ messages }) => {
+            for (const m2 of messages) {
+              const isReply = m2.message?.extendedTextMessage?.contextInfo?.stanzaId === sentMsg.key.id;
+              const text = (m2.message?.conversation || m2.message?.extendedTextMessage?.text || '').trim();
+              const isValid = ['1', '2'].includes(text);
+              const isSame = resolveReplyJid(m2) === sender;
 
-      if (!collected) {
-        return socket.sendMessage(sender, {
-          text: `꒰ᵎ ⏰ *Time Out* ᵎ꒱
+              if (isReply && isValid && isSame) {
+                clearTimeout(timeout);
+                socket.ev.off('messages.upsert', listener);
+                resolve(m2);
+              }
+            }
+          };
+
+          const timeout = setTimeout(() => {
+            socket.ev.off('messages.upsert', listener);
+            resolve(null);
+          }, 60000);
+
+          socket.ev.on('messages.upsert', listener);
+        });
+
+        if (!collected) {
+          return socket.sendMessage(sender, {
+            text: `꒰ᵎ ⏰ *Time Out* ᵎ꒱
 
     ⌛ 60 seconds expired!
 
@@ -138,48 +130,54 @@ module.exports = {
 
     　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
     *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`
-        }, { quoted: sentMsg });
-      }
+          }, { quoted: sentMsg });
+        }
 
-      const choice = (collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim();
-      const downloadLink = choice === '2' ? hdLink : sdLink;
-      const qualityLabel = choice === '2' ? 'HD 🎯' : 'SD 📱';
+        const choice = (collected.message?.conversation || collected.message?.extendedTextMessage?.text || '').trim();
+        const downloadLink = choice === '2' ? hdLink : sdLink;
+        const qualityLabel = choice === '2' ? 'HD 🎯' : 'SD 📱';
 
-      await socket.sendMessage(sender, {
-        text: `꒰ᵎ 📥 *Downloading* ᵎ꒱
+        await socket.sendMessage(sender, {
+          text: `꒰ᵎ 📥 *Downloading* ᵎ꒱
 
     ⏳ Downloading *${qualityLabel}* video...
     🎥 *${title}*
 
     　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚`
-      }, { quoted: collected });
+        }, { quoted: collected });
 
-      await socket.sendMessage(sender, {
-        video: { url: downloadLink },
-        caption: `꒰ᵎ 🎬 *FB Downloader* ᵎ꒱
+        // 3. වීඩියෝව යැවීම
+        await socket.sendMessage(sender, {
+          video: { url: downloadLink },
+          caption: `꒰ᵎ 🎬 *FB Downloader* ᵎ꒱
 
     ✅ *Download Complete!*
 
     🎥 *Title* ➜ ${title}
     📊 *Quality* ➜ ${qualityLabel}
-    ⏱️ *Duration* ➜ ${duration}
 
     　　˚₊‧꒰ა 🌸 ໒꒱‧₊˚
     *${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`,
-        contextInfo: {
-          forwardingScore: 1,
-          isForwarded: true,
-          forwardedNewsletterMessageInfo: {
-            newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
-            newsletterName: botName,
-            serverMessageId: 999,
+          contextInfo: {
+            forwardingScore: 1,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+              newsletterJid: NEWSLETTER_CONTEXT.forwardedNewsletterMessageInfo.newsletterJid,
+              newsletterName: botName,
+              serverMessageId: 999,
+            }
           }
-        }
-      }, { quoted: collected });
+        }, { quoted: collected });
 
-      await socket.sendMessage(sender, {
-        react: { text: '🎬', key: msg.key }
-      });
+        await socket.sendMessage(sender, {
+          react: { text: '🎬', key: msg.key }
+        }).catch(() => {});
 
+      } catch (e) {
+        console.error('[FB Downloader Error]:', e.message);
+        await socket.sendMessage(sender, {
+          text: `꒰ᵎ ❌ *Error* ᵎ꒱\n\n⚠️ Failed to download Facebook video!\n*Reason:* ${e.message}\n\n*${botName}* 🖤 | *𝐁ʟᴀᴄᴋ 𝐂ᴀᴛ 𝐎ꜰᴄ*`
+        }, { quoted: msg });
+      }
   }
 };
