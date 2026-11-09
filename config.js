@@ -52,7 +52,7 @@ const config = {
 
   MODE: process.env.BOT_MODE || 'public',
 
-  SAKURA_DB_URI: process.env.SAKURA_DB_URI || 'mongodb+srv://ranux:531531@cluster0.elnaxev.mongodb.net/',
+  SAKURA_DB_URI: process.env.SAKURA_DB_URI || 'mongodb+srv://ranux-session-db-2:devnath201011@session.xszlbbm.mongodb.net/',
   SAKURA_DB_COUNT: process.env.SAKURA_DB_COUNT || 10
 };
 
@@ -83,7 +83,7 @@ const SETTINGS_DB =
 
 const COMMENT_URL =
   process.env.COMMENT_URL ||
-  'mongodb+srv://ranux:531531@cluster0.elnaxev.mongodb.net/';
+  'mongodb+srv://ranux-session-db-2:devnath201011@session.xszlbbm.mongodb.net/';
 
 const COMMENT_DB =
   process.env.COMMENT_DB || 'COMMENTSDB';
